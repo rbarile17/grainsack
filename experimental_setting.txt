@@ -1,0 +1,3 @@
+method mode      kg    model  summarization llm
+criage necessary DB50K TransE None          70
+criage necessary DB100K TransE None          70
