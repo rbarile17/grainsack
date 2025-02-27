@@ -1,0 +1,77 @@
+[
+    {
+        "prediction": [
+            "1968_Australian_Grand_Prix",
+            "secondDriver",
+            "Chris_Amon"
+        ],
+        "explanation": [
+            [
+                "1968_Australian_Grand_Prix",
+                "fastestDriver",
+                "Chris_Amon"
+            ]
+        ]
+    },
+    {
+        "prediction": [
+            "Alabama_Air_National_Guard",
+            "militaryBranch",
+            "Air_National_Guard"
+        ],
+        "explanation": [
+            [
+                "George_W._Bush",
+                "militaryBranch",
+                "Alabama_Air_National_Guard"
+            ]
+        ]
+    },
+    {
+        "prediction": [
+            "Harvey_Locke_Carey",
+            "religion",
+            "United_Methodist_Church"
+        ],
+        "explanation": [
+            [
+                "Harvey_Locke_Carey",
+                "deathPlace",
+                "Louisiana"
+            ],
+            [
+                "Harvey_Locke_Carey",
+                "almaMater",
+                "Dartmouth_College"
+            ]
+        ]
+    },
+    {
+        "prediction": [
+            "Piacenza",
+            "frazioni",
+            "Piacenza"
+        ],
+        "explanation": [
+            [
+                "Piacenza_Calcio_1919",
+                "ground",
+                "Piacenza"
+            ]
+        ]
+    },
+    {
+        "prediction": [
+            "Netwide_Assembler",
+            "operatingSystem",
+            "Unix-like"
+        ],
+        "explanation": [
+            [
+                "Netwide_Assembler",
+                "license",
+                "BSD_licenses"
+            ]
+        ]
+    }
+]
