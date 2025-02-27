@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Barile"
+  given-names: "Roberto"
+  orcid: "https://orcid.org/0009-0007-3058-8692"
+- family-names: "d'Amato"
+  given-names: "Claudia"
+  orcid: "https://orcid.org/0000-0002-3385-987X"
+- family-names: "Fanizzi"
+  given-names: "Nicola"
+  orcid: "https://orcid.org/0000-0001-5319-7933"
+title: "GRainsaCK"
+version: 0.0.0.1
+doi: 10.5281/zenodo.15411798
+date-released: 2025-05-14
+url: https://github.com/rbarile17/grainsack

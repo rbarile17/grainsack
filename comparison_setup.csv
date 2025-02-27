@@ -1,0 +1,2 @@
+kg_name;kge_model_name;lpx_config;eval_config
+DB50K;TransE;{"method": "kelpie", "mode": "necessary", "summarization": null};{"prompting": "few_shot_constrained", "llm_id": "unsloth/Llama-3.2-1B-Instruct-bnb-4bit"}
