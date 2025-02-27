@@ -1,0 +1,50 @@
+"""This module contains constants used throughout the grainsack package."""
+
+from pathlib import Path
+
+MAX_PROCESSES = 8
+
+EXPERIMENTS_DATA_PATH = Path("experiments")
+
+LP_CONFIGS_PATH = EXPERIMENTS_DATA_PATH / "kge_configs"
+KGES_PATH = EXPERIMENTS_DATA_PATH / "kge_models"
+EXPLANATIONS_PATH = EXPERIMENTS_DATA_PATH / "explanations"
+PREDICTIONS_PATH = EXPERIMENTS_DATA_PATH / "predictions"
+SELECTED_PREDICTIONS_PATH = EXPERIMENTS_DATA_PATH / "selected_predictions"
+EVALUATIONS_PATH = EXPERIMENTS_DATA_PATH / "evaluations"
+METRICS_PATH = EXPERIMENTS_DATA_PATH / "metrics"
+
+KGS_PATH = Path("kgs")
+
+DB50K = "DB50K"
+DB100K = "DB100K"
+YAGO4_20 = "YAGO4-20"
+FB15K237 = "FB15k-237"
+WN18RR = "WN18RR"
+YAGO310 = "YAGO3-10"
+FR200K = "FR200K"
+FRUNI = "FRUNI"
+FTREE = "FTREE"
+COUNTRIES = "Countries"
+
+CONVE = "ConvE"
+COMPLEX = "ComplEx"
+TRANSE = "TransE"
+
+CRIAGE = "criage"
+DATA_POISONING = "dp"
+KELPIE = "kelpie"
+KELPIEPP = "kelpie++"
+GROUND_TRUTH = "ground-truth"
+
+NECESSARY = "necessary"
+SUFFICIENT = "sufficient"
+
+SIMULATION = "simulation"
+BISIMULATION = "bisimulation"
+
+SUMMARIZATION_METHODS = [SIMULATION, BISIMULATION]
+
+MODES = [NECESSARY, SUFFICIENT]
+KGS = [DB50K, DB100K, YAGO4_20, FB15K237, WN18RR, YAGO310, FR200K, FRUNI, FTREE, COUNTRIES]
+MODELS = [CONVE, COMPLEX, TRANSE]
