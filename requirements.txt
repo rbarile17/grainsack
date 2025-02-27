@@ -1,0 +1,56 @@
+transformers==4.50.0
+click==8.1.8
+pykeen==1.11.0
+accelerate==1.5.2
+
+def post_train(model, modify, prediction, triples, replication_entities, kelpie_entities, statements, original_statements, partition) -> Model:
+    """Post-train the model on the modified KG.
+
+    Modify the KG according to the statement set and post-train the model on the modified KG.
+    Post-training is done by creating a new entity embedding for each statement set, freezing the existing entity and relation embeddings of the model,
+    and training the model on the modified KG.
+
+    Args:
+        model: the model to be post-trained.
+        modify: the function fusing the KG and the statement sets.
+        kelpie_kg: the modified KG.
+        statement_sets: the statement sets.
+    """
+
+    model.cuda()
+
+    mapped_statements = []
+    for i, p, j in statements:
+        mapped_statements.append(torch.tensor([(s, p, o) for s in partition[i] for o in partition[j]]).cuda())
+
+    masks = [(s.unsqueeze(1) == original_statements).all(dim=-1).any(dim=1) for s in mapped_statements]
+    mapped_statements = [mapped_statements[i][masks[i]] for i in range(statements.size(0))]
+
+    n_replications = replication_entities.size(0)
+
+    for m in mapped_statements:
+        m = m.unsqueeze(1).unsqueeze(0).repeat(n_replications, 1, 1, 1)
+        mask = m[:, :, :, 0] == prediction[0]
+        m[:, :, :, 0] = torch.where(mask, replication_entities.view(n_replications, 1, 1), m[:, :, :, 0])
+        mask = m[:, :, :, 2] == prediction[0]
+        m[:, :, :, 2] = torch.where(mask, replication_entities.view(n_replications, 1, 1), m[:, :, :, 2])
+
+    original_entities = replication_entities.unsqueeze(-1).unsqueeze(-1)
+    kelpie_statements = mapped_statements.clone()
+    mask = kelpie_statements[:, :, :, 0] == original_entities
+    kelpie_statements[:, :, :, 0] = torch.where(mask, kelpie_entities.unsqueeze(-1), kelpie_statements[:, :, :, 0])
+    mask = kelpie_statements[:, :, :, 2] == original_entities
+    kelpie_statements[:, :, :, 2] = torch.where(mask, kelpie_entities.unsqueeze(-1), kelpie_statements[:, :, :, 2])
+
+    modify(triples, kelpie_statements)
+
+    optimizer = Adam(params=model.get_grad_params())
+
+    training_triples = triples.cpu()
+
+    post_triples = CoreTriplesFactory.create(training_triples)
+    trainer = SLCWATrainingLoop(model=model, triples_factory=post_triples, optimizer=optimizer)
+
+    trainer.train(triples_factory=post_triples, use_tqdm=False)
+
+    return model

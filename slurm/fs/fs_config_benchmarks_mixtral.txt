@@ -1,0 +1,4 @@
+ID dataset model include_ranking include_examples parameters llm
+1 FR200K ComplEx 1 0 7 Mixtral
+2 FR200K ComplEx 1 1 7 Mixtral
+3 FRUNI ComplEx 1 0 7 Mixtral
