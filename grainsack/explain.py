@@ -95,7 +95,7 @@ def build_combinatorial_optimization_explainer(kg, kge_model_path, kge_config, l
             summarize_partial = lambda x: (x, [])
 
         if method == KELPIE:
-            max_length = 2
+            max_length = 4
             sift_partial = partial(topology_sift, kg)
             fuse = remove_statements if mode == NECESSARY else add_statements
             relevance_partial = partial(estimate_rank_variation, kg, kge_model, kge_config, fuse, mode=mode)
@@ -204,7 +204,7 @@ def run_combinatorial_optimization(
 
     combo_scores = []
 
-    for length in range(2, min(statements.size(0), max_length) + 1):
+    for length in range(1, min(statements.size(0), max_length) + 1):
         idx = torch.tensor(list(combinations(range(statements.size(0)), length)))
         combos = statements[idx].squeeze(2)
         if kelpie:

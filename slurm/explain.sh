@@ -13,6 +13,7 @@ kge_model_path=$3
 kge_config_path=$4
 lpx_config=$5
 output_path=$6
+log_path=$7
 
 python -m grainsack.operations explain \
     --predictions_path $predictions_path \
@@ -20,4 +21,4 @@ python -m grainsack.operations explain \
     --kge_model_path $kge_model_path \
     --kge_config_path $kge_config_path \
     --lpx_config "$lpx_config" \
-    --output_path $output_path >> mylog.log 2>&1
+    --output_path $output_path >> $log_path 2>&1

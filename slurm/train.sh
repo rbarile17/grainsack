@@ -10,8 +10,9 @@
 kg_name=$1
 kge_config_path=$2
 output_path=$3
+log_path=$4
 
 python -m grainsack.operations train \
     --kg_name $kg_name \
     --kge_config_path $kge_config_path \
-    --output_path $output_path >> mylog.log 2>&1
+    --output_path $output_path >> $log_path 2>&1

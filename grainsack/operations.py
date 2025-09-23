@@ -208,7 +208,7 @@ def select_predictions(predictions_path, output_path):
     predictions = predictions[predictions["rank"] == 1]
     predictions.drop(["rank"], axis=1, inplace=True)
 
-    # predictions = predictions.sample(5, random_state=42)
+    predictions = predictions.sample(5, random_state=42)
     predictions = predictions.reset_index(drop=True)
 
     predictions.to_csv(output_path, sep="\t", index=False, header=False)
@@ -268,7 +268,7 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
     lpx_config = json.loads(lpx_config)
 
     print(f"Loading KG...")
-    kg = KG(kg=kg_name, classes=True)
+    kg = KG(kg=kg_name, classes=lpx_config["summarization"] is not None)
 
     print("Loading predictions...")
     with open(predictions_path, "r", encoding="utf-8") as predictions:
@@ -276,7 +276,6 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
     predictions = kg.id_triples(predictions)
 
     kge_config = read_json(kge_config_path)
-    # lp_config["training"]["epochs"] = lp_config["training"]["trained_epochs"]
 
     factory = globals().get(factory_name)
     explanations = run_explain(predictions, kg, kge_model_path, kge_config, lpx_config, factory)

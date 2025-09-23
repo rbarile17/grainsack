@@ -13,6 +13,7 @@ from grainsack import (
     EXPLANATIONS_PATH,
     KGES_PATH,
     KGS_PATH,
+    LOGS_PATH,
     LP_CONFIGS_PATH,
     METRICS_PATH,
     PREDICTIONS_PATH,
@@ -87,6 +88,7 @@ class FormatFR200K(luigi.Task):
 class Tune(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
+    log_path = luigi.Parameter()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -110,7 +112,7 @@ class Tune(luigi.Task):
 
     def slurm_params_as_args(self):
         """Convert parameters to command line arguments."""
-        return [self.kg_name, self.kge_model_name, self.output_path]
+        return [self.kg_name, self.kge_model_name, self.output_path, self.log_path]
 
     def run(self):
         """Execute the task."""
@@ -120,6 +122,7 @@ class Tune(luigi.Task):
 class Train(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
+    log_path = luigi.Parameter()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -129,7 +132,7 @@ class Train(luigi.Task):
 
     def requires(self):
         """Declare dependencies."""
-        return Tune(kg_name=self.kg_name, kge_model_name=self.kge_model_name)
+        return Tune(kg_name=self.kg_name, kge_model_name=self.kge_model_name, log_path=self.log_path)
 
     def output(self):
         """Declare output file."""
@@ -141,7 +144,7 @@ class Train(luigi.Task):
 
     def slurm_params_as_args(self):
         """Convert parameters to command line arguments."""
-        return [self.kg_name, self.kge_config_path, self.output_path]
+        return [self.kg_name, self.kge_config_path, self.output_path, self.log_path]
 
     def run(self):
         """Execute the task."""
@@ -151,6 +154,7 @@ class Train(luigi.Task):
 class Rank(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
+    log_path = luigi.Parameter()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -161,7 +165,7 @@ class Rank(luigi.Task):
 
     def requires(self):
         """Declare dependencies."""
-        return Train(kg_name=self.kg_name, kge_model_name=self.kge_model_name)
+        return Train(kg_name=self.kg_name, kge_model_name=self.kge_model_name, log_path=self.log_path)
 
     def output(self):
         """Declare output file."""
@@ -182,7 +186,7 @@ class Rank(luigi.Task):
 
     def slurm_params_as_args(self):
         """Convert parameters to command line arguments."""
-        return [self.kg_name, self.kge_model_path, self.kge_config_path, self.output_path]
+        return [self.kg_name, self.kge_model_path, self.kge_config_path, self.output_path, self.log_path]
 
     def run(self):
         """Execute the task."""
@@ -192,6 +196,7 @@ class Rank(luigi.Task):
 class SelectPredictions(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
+    log_path = luigi.Parameter()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -201,7 +206,7 @@ class SelectPredictions(luigi.Task):
 
     def requires(self):
         """Declare dependencies."""
-        return Rank(kg_name=self.kg_name, kge_model_name=self.kge_model_name)
+        return Rank(kg_name=self.kg_name, kge_model_name=self.kge_model_name, log_path=self.log_path)
 
     def output(self):
         """Declare output file."""
@@ -220,6 +225,7 @@ class Explain(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
     lpx_config = luigi.Parameter()
+    log_path = luigi.Parameter()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -233,7 +239,7 @@ class Explain(luigi.Task):
 
     def requires(self):
         """Declare dependencies."""
-        return SelectPredictions(kg_name=self.kg_name, kge_model_name=self.kge_model_name)
+        return SelectPredictions(kg_name=self.kg_name, kge_model_name=self.kge_model_name, log_path=self.log_path)
 
     def output(self):
         """Declare output file."""
@@ -261,7 +267,15 @@ class Explain(luigi.Task):
     def slurm_params_as_args(self):
         """Convert parameters to command line arguments."""
 
-        args = [self.predictions_path, self.kg_name, self.kge_model_path, self.kge_config_path, self.lpx_config, self.output_path]
+        args = [
+            self.predictions_path,
+            self.kg_name,
+            self.kge_model_path,
+            self.kge_config_path,
+            self.lpx_config,
+            self.output_path,
+            self.log_path,
+        ]
         return args
 
     def run(self):
@@ -287,10 +301,13 @@ class Evaluate(luigi.Task):
         self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
         self.explanations_path = EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config_hash}.json"
         self.output_path = EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_and_eval_config_hash}.json"
+        self.log_path = LOGS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_and_eval_config_hash}.log"
 
     def requires(self):
         """Declare dependencies."""
-        return Explain(kg_name=self.kg_name, kge_model_name=self.kge_model_name, lpx_config=self.lpx_config)
+        return Explain(
+            kg_name=self.kg_name, kge_model_name=self.kge_model_name, lpx_config=self.lpx_config, log_path=self.log_path
+        )
 
     def output(self):
         """Declare output file."""
