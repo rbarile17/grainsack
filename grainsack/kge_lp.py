@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from pykeen.evaluation import RankBasedEvaluator
 from pykeen.sampling import BasicNegativeSampler
-from pykeen.models import Model, TransE, ComplEx
+from pykeen.models import Model, TransE, ComplEx, ConvE
 from pykeen.nn import Embedding
 from torch import FloatTensor, LongTensor
 from torch.nn.init import xavier_uniform_, normal_
@@ -149,12 +149,54 @@ class CustomComplEx(ComplEx):
 
         return lhs * rel
 
-    def criage_last_step(self, x: torch.Tensor, rhs: torch.Tensor):
-        """Get the last step of the query."""
-        return x @ rhs
-
     def _get_name(self):
         return "ComplEx"
+
+
+class CustomConvE(ConvE):
+    """Custom ConvE model."""
+
+    def criage_first_step(self, triples):
+        """Get the first step of the query."""
+
+        s, p, _ = self._get_representations(h=triples[..., 0], r=triples[..., 1], t=None, mode=None)
+
+        x = torch.cat(
+            torch.broadcast_tensors(
+                s.view(
+                    *s.shape[:-1],
+                    self.interaction.shape_info.input_channels,
+                    self.interaction.shape_info.image_height,
+                    self.interaction.shape_info.image_width,
+                ),
+                p.view(
+                    *p.shape[:-1],
+                    self.interaction.shape_info.input_channels,
+                    self.interaction.shape_info.image_height,
+                    self.interaction.shape_info.image_width,
+                ),
+            ),
+            dim=-2,
+        )
+        prefix_shape = x.shape[:-3]
+        x = x.view(
+            -1,
+            self.interaction.shape_info.input_channels,
+            2 * self.interaction.shape_info.image_height,
+            self.interaction.shape_info.image_width,
+        )
+
+        x = self.interaction.hr2d(x)
+
+        x = x.view(-1, self.interaction.shape_info.num_in_features)
+        x = self.interaction.hr1d(x)
+
+        x = x.view(*prefix_shape, s.shape[-1])
+
+        return x
+
+    def _get_name(self):
+        return "ConvE"
 
 
 class KelpieComplEx(CustomComplEx):
@@ -176,10 +218,30 @@ class KelpieComplEx(CustomComplEx):
         self.relation_representations[0] = KelpieRelationEmbeddings(weight, max_id, shape)
 
 
+class KelpieConvE(CustomConvE):
+    """Kelpie ConvE model."""
+
+    def __init__(self, triples_factory, model, config, n_replications, n_statements):
+        """Initialize the Kelpie ConvE model."""
+        super().__init__(triples_factory=triples_factory, **config, random_seed=42)
+
+        weight = model.entity_representations[0]()
+        max_id = self.entity_representations[0].max_id
+        shape = self.entity_representations[0].shape
+        self.entity_representations[0] = KelpieEmbedding(weight, max_id, shape, n_replications, n_statements)
+
+        weight = model.relation_representations[0]()
+        max_id = self.relation_representations[0].max_id
+        shape = self.relation_representations[0].shape
+        self.relation_representations[0] = KelpieRelationEmbeddings(weight, max_id, shape)
+
+        self.interaction.requires_grad_(False)
+
+
 MODEL_REGISTRY = {
-    "TransE": {"class": TransE, "epochs": 1, "batch_size": 32, "kelpie_class": KelpieTransE},
-    "ComplEx": {"class": CustomComplEx, "epochs": 1, "batch_size": 64, "kelpie_class": KelpieComplEx},
-    # "ConvE": {"class": CustomConvE, "epochs": 5, "batch_size": 65536},
+    "TransE": {"class": TransE, "epochs": 1000, "batch_size": 16356, "kelpie_class": KelpieTransE},
+    "ComplEx": {"class": CustomComplEx, "epochs": 1000, "batch_size": 16356, "kelpie_class": KelpieComplEx},
+    "ConvE": {"class": CustomConvE, "epochs": 1000, "batch_size": 16356, "kelpie_class": KelpieConvE},
 }
 
 

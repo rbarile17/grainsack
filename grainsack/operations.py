@@ -63,14 +63,13 @@ def tune(kg_name, kge_model_name, output_path):
     """
     set_seeds(42)
 
-    print(f"Loading KG...")
     kg = KG(kg_name)
 
     num_epochs = MODEL_REGISTRY[kge_model_name]["epochs"]
     batch_size = MODEL_REGISTRY[kge_model_name]["batch_size"]
 
     config = hpo_pipeline(
-        timeout=1,
+        timeout=4 * 60 * 60,
         training=kg.training,
         validation=kg.validation,
         testing=kg.testing,
@@ -79,7 +78,7 @@ def tune(kg_name, kge_model_name, output_path):
         stopper="early",
         stopper_kwargs={"frequency": 5, "patience": 2, "relative_delta": 0.002},
         lr_scheduler="ExponentialLR",
-        evaluation_kwargs={"batch_size": 32},
+        evaluation_kwargs={"batch_size": 16356},
     )
 
     config = config._get_best_study_config()["pipeline"]
@@ -120,7 +119,6 @@ def train(kg_name, kge_config_path, output_path):
     set_seeds(42)
 
     config = read_json(kge_config_path)
-    print(f"Loading KG...")
     kg = KG(kg_name)
 
     result = pipeline(
@@ -129,7 +127,7 @@ def train(kg_name, kge_config_path, output_path):
         testing=kg.testing,
         validation=kg.validation,
         stopper="early",
-        stopper_kwargs={"frequency": 1, "patience": 1, "relative_delta": 0.002, "evaluation_batch_size": 1},
+        stopper_kwargs={"frequency": 5, "patience": 2, "relative_delta": 0.002, "evaluation_batch_size": 16356},
     )
 
     config["training_kwargs"]["num_epochs"] = result.stopper.best_epoch
@@ -164,7 +162,6 @@ def rank(kg_name, kge_model_path, kge_config_path, output_path):
     """
     set_seeds(42)
 
-    print(f"Loading KG...")
     kg = KG(kg_name)
 
     kge_config = read_json(kge_config_path)
@@ -177,7 +174,7 @@ def rank(kg_name, kge_model_path, kge_config_path, output_path):
     mapped_triples = kg.testing.mapped_triples
     mapped_triples = mapped_triples.cuda()
     filter_triples = [kg.training.mapped_triples.cuda(), kg.validation.mapped_triples.cuda()]
-    evaluator.evaluate(kge_model, mapped_triples, batch_size=64, additional_filter_triples=filter_triples)
+    evaluator.evaluate(kge_model, mapped_triples, batch_size=1, additional_filter_triples=filter_triples)
 
     ranks = evaluator.ranks[("tail", "optimistic")]
     ranks = np.concatenate(ranks)
@@ -208,7 +205,7 @@ def select_predictions(predictions_path, output_path):
     predictions = predictions[predictions["rank"] == 1]
     predictions.drop(["rank"], axis=1, inplace=True)
 
-    predictions = predictions.sample(5, random_state=42)
+    predictions = predictions.sample(100, random_state=42)
     predictions = predictions.reset_index(drop=True)
 
     predictions.to_csv(output_path, sep="\t", index=False, header=False)
@@ -267,15 +264,13 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
 
     lpx_config = json.loads(lpx_config)
 
-    print(f"Loading KG...")
-    kg = KG(kg=kg_name, classes=lpx_config["summarization"] is not None)
+    kge_config = read_json(kge_config_path)
 
-    print("Loading predictions...")
+    kg = KG(kg=kg_name, classes=lpx_config["summarization"] is not None, create_inverse_triples=kge_config["model"] == "ConvE")
+
     with open(predictions_path, "r", encoding="utf-8") as predictions:
         predictions = [x.strip().split("\t") for x in predictions.readlines()]
     predictions = kg.id_triples(predictions)
-
-    kge_config = read_json(kge_config_path)
 
     factory = globals().get(factory_name)
     explanations = run_explain(predictions, kg, kge_model_path, kge_config, lpx_config, factory)
@@ -347,10 +342,8 @@ def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, eval_c
     """
     set_seeds(42)
 
-    print(f"Loading explanations...")
     explained_predictions = read_json(explanations_path)
 
-    print(f"Loading KG...")
     kg = KG(kg=kg_name)
 
     eval_config = json.loads(eval_config)

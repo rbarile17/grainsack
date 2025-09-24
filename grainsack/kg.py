@@ -16,7 +16,7 @@ class KG:
     """
     Class representing a knowledge graph.
     """
-    def __init__(self, kg: str, classes=False) -> None:
+    def __init__(self, kg: str, classes=False, create_inverse_triples=False) -> None:
         """
         Initialize the KG class.
         :param kg: The name of the knowledge graph.
@@ -31,7 +31,7 @@ class KG:
         testing = KGS_PATH / self.name / "test.txt"
         validation = KGS_PATH / self.name / "valid.txt"
 
-        self._kg = get_dataset(training=training, testing=testing, validation=validation)
+        self._kg = get_dataset(training=training, testing=testing, validation=validation, dataset_kwargs={"create_inverse_triples": create_inverse_triples})
 
         self.id_to_entity: Dict = {v: k for k, v in self._kg.entity_to_id.items()}
         self.id_to_relation: Dict = {v: k for k, v in self._kg.relation_to_id.items()}
