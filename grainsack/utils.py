@@ -12,7 +12,7 @@ def init_kge_model(config, kg):
     """Initialize the model with the given configuration and knowledge graph."""
     kge_model_name = config["model"]
     kge_model_class = MODEL_REGISTRY[kge_model_name]["class"]
-    kge_model = kge_model_class(triples_factory=kg.training, **config["model_kwargs"], loss_kwargs=config["loss_kwargs"], random_seed=42)
+    kge_model = kge_model_class(triples_factory=kg.training, **config["model_kwargs"], loss_kwargs=config.get("loss_kwargs", {}), random_seed=42)
 
     return kge_model
 
