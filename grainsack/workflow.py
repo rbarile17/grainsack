@@ -88,12 +88,12 @@ class FormatFR200K(luigi.Task):
 class Tune(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
-    log_path = luigi.Parameter()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.output_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
+        self.log_path = LOGS_PATH / f"tune_{self.kg_name}_{self.kge_model_name}.log"
 
     def requires(self):
         """Declare dependencies."""
@@ -122,17 +122,17 @@ class Tune(luigi.Task):
 class Train(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
-    log_path = luigi.Parameter()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
         self.output_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
+        self.log_path = LOGS_PATH / f"train_{self.kg_name}_{self.kge_model_name}.log"
 
     def requires(self):
         """Declare dependencies."""
-        return Tune(kg_name=self.kg_name, kge_model_name=self.kge_model_name, log_path=self.log_path)
+        return Tune(kg_name=self.kg_name, kge_model_name=self.kge_model_name)
 
     def output(self):
         """Declare output file."""
@@ -154,7 +154,6 @@ class Train(luigi.Task):
 class Rank(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
-    log_path = luigi.Parameter()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -162,10 +161,11 @@ class Rank(luigi.Task):
         self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
         self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
         self.output_path = PREDICTIONS_PATH / f"{self.kg_name}_{self.kge_model_name}.csv"
+        self.log_path = LOGS_PATH / f"rank_{self.kg_name}_{self.kge_model_name}.log"
 
     def requires(self):
         """Declare dependencies."""
-        return Train(kg_name=self.kg_name, kge_model_name=self.kge_model_name, log_path=self.log_path)
+        return Train(kg_name=self.kg_name, kge_model_name=self.kge_model_name)
 
     def output(self):
         """Declare output file."""
@@ -196,7 +196,6 @@ class Rank(luigi.Task):
 class SelectPredictions(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
-    log_path = luigi.Parameter()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -206,7 +205,7 @@ class SelectPredictions(luigi.Task):
 
     def requires(self):
         """Declare dependencies."""
-        return Rank(kg_name=self.kg_name, kge_model_name=self.kge_model_name, log_path=self.log_path)
+        return Rank(kg_name=self.kg_name, kge_model_name=self.kge_model_name)
 
     def output(self):
         """Declare output file."""
@@ -225,7 +224,6 @@ class Explain(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
     lpx_config = luigi.Parameter()
-    log_path = luigi.Parameter()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -236,10 +234,11 @@ class Explain(luigi.Task):
         self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
         self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
         self.output_path = EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config_hash}.json"
+        self.log_path = LOGS_PATH / f"explain_{self.kg_name}_{self.kge_model_name}_{lpx_config_hash}.log"
 
     def requires(self):
         """Declare dependencies."""
-        return SelectPredictions(kg_name=self.kg_name, kge_model_name=self.kge_model_name, log_path=self.log_path)
+        return SelectPredictions(kg_name=self.kg_name, kge_model_name=self.kge_model_name)
 
     def output(self):
         """Declare output file."""
@@ -301,13 +300,11 @@ class Evaluate(luigi.Task):
         self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
         self.explanations_path = EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config_hash}.json"
         self.output_path = EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_and_eval_config_hash}.json"
-        self.log_path = LOGS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_and_eval_config_hash}.log"
+        self.log_path = LOGS_PATH / f"evaluate_{self.kg_name}_{self.kge_model_name}_{lpx_and_eval_config_hash}.log"
 
     def requires(self):
         """Declare dependencies."""
-        return Explain(
-            kg_name=self.kg_name, kge_model_name=self.kge_model_name, lpx_config=self.lpx_config, log_path=self.log_path
-        )
+        return Explain(kg_name=self.kg_name, kge_model_name=self.kge_model_name, lpx_config=self.lpx_config)
 
     def output(self):
         """Declare output file."""
