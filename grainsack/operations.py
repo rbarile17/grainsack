@@ -345,7 +345,9 @@ def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, eval_c
 
     explained_predictions = read_json(explanations_path)
 
-    kg = KG(kg=kg_name)
+    kge_config = read_json(kge_config_path)
+
+    kg = KG(kg=kg_name, create_inverse_triples=kge_config["model"] == "ConvE")
 
     eval_config = json.loads(eval_config)
     evalautions, simulations_time, post_exp_simulations_time = run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eval_config)
