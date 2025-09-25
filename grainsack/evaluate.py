@@ -9,6 +9,8 @@ from grainsack.kg import KG
 from grainsack.kge_lp import rank
 from grainsack.utils import load_kge_model, read_json
 
+import time
+
 SYSTEM_PROMPT = """
 You are a helpful, respectful and honest assistant.
 Your response should be crisp, short and not repetitive.
@@ -150,7 +152,10 @@ def run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eva
         )
         for i in range(len(predictions))
     ]
+    start_time = time.perf_counter()
     simulations = pipe(prompts, max_new_tokens=64, use_cache=True)
+    end_time = time.perf_counter()
+    simulation_time = end_time - start_time
     simulations = [simulation[0]["generated_text"][-1]["content"] for simulation in simulations]
 
     print("Running post-explanation simulations...")
@@ -163,7 +168,10 @@ def run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eva
         )
         for i in range(len(predictions))
     ]
+    start_time = time.perf_counter()
     post_exp_simulations = pipe(prompts, max_new_tokens=64, use_cache=True)
+    end_time = time.perf_counter()
+    post_exp_simulation_time = end_time - start_time
     post_exp_simulations = [simulation[0]["generated_text"][-1]["content"] for simulation in post_exp_simulations]
 
     predictability_pre = [1 if o == gt else 0 for o, gt in zip(simulations, gts)]
@@ -178,4 +186,4 @@ def run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eva
         explained_predictions[i]["predictability_post"] = predictability_post[i]
         explained_predictions[i]["fsv"] = explanation_labels[i]
 
-    return explained_predictions
+    return explained_predictions, simulation_time, post_exp_simulation_time

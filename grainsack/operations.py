@@ -63,7 +63,7 @@ def tune(kg_name, kge_model_name, output_path):
     """
     set_seeds(42)
 
-    kg = KG(kg_name)
+    kg = KG(kg_name, create_inverse_triples=kge_model_name == "ConvE")
 
     num_epochs = MODEL_REGISTRY[kge_model_name]["epochs"]
     batch_size = MODEL_REGISTRY[kge_model_name]["batch_size"]
@@ -119,7 +119,7 @@ def train(kg_name, kge_config_path, output_path):
     set_seeds(42)
 
     config = read_json(kge_config_path)
-    kg = KG(kg_name)
+    kg = KG(kg_name, create_inverse_triples=config["model"] == "ConvE")
 
     result = pipeline(
         **config,
@@ -273,7 +273,7 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
     predictions = kg.id_triples(predictions)
 
     factory = globals().get(factory_name)
-    explanations = run_explain(predictions, kg, kge_model_path, kge_config, lpx_config, factory)
+    explanations, times = run_explain(predictions, kg, kge_model_path, kge_config, lpx_config, factory)
 
     output = []
     if lpx_config["method"] != GROUND_TRUTH:
@@ -282,6 +282,7 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
                 {
                     "prediction": kg.label_triple(torch.tensor(predictions[i])),
                     "explanation": kg.label_triples(explanations[i]),
+                    "time": times[i],
                 }
             )
         write_json(output, output_path)
@@ -347,9 +348,15 @@ def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, eval_c
     kg = KG(kg=kg_name)
 
     eval_config = json.loads(eval_config)
-    evalautions = run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eval_config)
+    evalautions, simulations_time, post_exp_simulations_time = run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eval_config)
 
-    write_json(evalautions, output_path)
+    exp = {
+        "evaluations": evalautions,
+        "simulations_time": simulations_time,
+        "post_exp_simulations_time": post_exp_simulations_time
+    }
+
+    write_json(exp, output_path)
 
 
 @cli.command()

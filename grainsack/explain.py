@@ -6,6 +6,8 @@ from ast import literal_eval
 from functools import partial
 from itertools import combinations
 
+import time
+
 import pandas as pd
 import torch
 from tqdm import tqdm
@@ -60,11 +62,16 @@ def run_explain(predictions, kg, kge_model_path, kge_config, lpx_config, build_e
     explain_partial = build_explainer(kg, kge_model_path, kge_config, lpx_config)
 
     explanations = []
+    times = []
     for prediction in tqdm(predictions):
+        start_time = time.perf_counter()
         explanation = explain_partial(prediction)
+        end_time = time.perf_counter()
         explanations.extend(explanation)
+        elapsed_time = end_time - start_time
+        times.append(elapsed_time)
 
-    return explanations
+    return explanations, times
 
 
 def build_combinatorial_optimization_explainer(kg, kge_model_path, kge_config, lpx_config):
