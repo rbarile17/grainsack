@@ -261,6 +261,11 @@ def criage_relevance(kg, model, replication_entities, prediction, statements, mo
 
     relevance = torch.matmul(z_pred.unsqueeze(2), dot.unsqueeze(-1)).squeeze(-1)
 
+    relevance = relevance.reshape(n_replications, n_statements).mean(dim=0)
+
+    if relevance.dtype == torch.complex64 or relevance.dtype == torch.complex128:
+        relevance = torch.abs(relevance)
+
     if mode == NECESSARY:
         return relevance
     elif mode == SUFFICIENT:

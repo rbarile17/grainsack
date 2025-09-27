@@ -154,7 +154,7 @@ def build_combinatorial_optimization_explainer(kg, kge_model_path, kge_config, l
     return explain_partial
 
 
-def select_replication_entities(kg, kge_model, prediction, k=3):
+def select_replication_entities(kg, kge_model, prediction, k=10):
     """Select the entities for replicating the prediction.
 
     Select the entities for replicating the prediction,
@@ -209,8 +209,6 @@ def run_combinatorial_optimization(
 
     replication_entities = select_replication_entities_partial(prediction)
 
-    combo_scores = []
-
     for length in range(1, min(statements.size(0), max_length) + 1):
         idx = torch.tensor(list(combinations(range(statements.size(0)), length)))
         combos = statements[idx].squeeze(2)
@@ -219,9 +217,7 @@ def run_combinatorial_optimization(
         else:
             relevances = relevance(replication_entities, prediction, combos)
 
-        combo_scores.extend(zip(combos, relevances))
-
-    best_combo, _ = max(combo_scores, key=lambda x: x[1])
+    best_combo = combos[torch.argmax(relevances)]
 
     best_combo = best_combo.reshape(-1, 3)
     mapped_statement = []
