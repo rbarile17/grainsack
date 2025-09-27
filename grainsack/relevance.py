@@ -174,6 +174,12 @@ def dp_relevance(model, lr, aggregate, replication_entities, prediction, stateme
         [perturbed_entity_embeddings[i] - lr * gradients[i] for i in range(n_replications)]
     )
 
+    statements = statements.squeeze(1).unsqueeze(0).repeat(n_replications, 1, 1)
+    mask = statements[:, :, 0] == prediction[0]
+    statements[:, :, 0] = torch.where(mask, replication_entities.view(n_replications, 1), statements[:, :, 0])
+    mask = statements[:, :, 2] == prediction[0]
+    statements[:, :, 2] = torch.where(mask, replication_entities.view(n_replications, 1), statements[:, :, 2])
+
     mask = statements[:, :, 0] == replicated_prediction[:, 0].unsqueeze(-1)
     mask = mask.reshape(-1)
 
