@@ -1,6 +1,5 @@
 """Utility functions for loading and saving models and data."""
 
-
 import json
 
 import torch
@@ -12,7 +11,9 @@ def init_kge_model(config, kg):
     """Initialize the model with the given configuration and knowledge graph."""
     kge_model_name = config["model"]
     kge_model_class = MODEL_REGISTRY[kge_model_name]["class"]
-    kge_model = kge_model_class(triples_factory=kg.training, **config["model_kwargs"], loss_kwargs=config.get("loss_kwargs", {}), random_seed=42)
+    kge_model = kge_model_class(
+        triples_factory=kg.training, **config["model_kwargs"], loss_kwargs=config.get("loss_kwargs", {}), random_seed=42
+    )
 
     return kge_model
 
@@ -23,6 +24,7 @@ def load_kge_model(kge_model_path, kge_config, kg):
     kge_model.load_state_dict(torch.load(kge_model_path, weights_only=True))
 
     return kge_model
+
 
 def read_json(path):
     """Read a JSON file and return its content."""

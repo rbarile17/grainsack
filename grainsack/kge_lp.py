@@ -51,10 +51,14 @@ class KelpieEmbedding(Embedding):
 
         if self.is_complex:
             self.embedding_dim = shape[0] * 2
+        elif shape == ():
+            self.embedding_dim = 1
         else:
             self.embedding_dim = shape[0]
 
         self._embeddings = NoResetEmbedding(weight, num_embeddings=max_id, embedding_dim=self.embedding_dim)
+        if self.embedding_dim == 1:
+            self._embeddings.weight.data = self._embeddings.weight.data.unsqueeze(-1)
         n_kelpie = n_statements * n_replications
         self.kelpie_embeddings = ModuleList(
             [NoResetEmbedding(num_embeddings=1, embedding_dim=self.embedding_dim) for _ in range(n_kelpie)]
@@ -230,6 +234,11 @@ class KelpieConvE(CustomConvE):
         shape = self.entity_representations[0].shape
         self.entity_representations[0] = KelpieEmbedding(weight, max_id, shape, n_replications, n_statements)
 
+        weight = model.entity_representations[1]()
+        max_id = self.entity_representations[1].max_id
+        shape = self.entity_representations[1].shape
+        self.entity_representations[1] = KelpieEmbedding(weight, max_id, shape, n_replications, n_statements)
+
         weight = model.relation_representations[0]()
         max_id = self.relation_representations[0].max_id
         shape = self.relation_representations[0].shape
@@ -241,7 +250,7 @@ class KelpieConvE(CustomConvE):
 MODEL_REGISTRY = {
     "TransE": {"class": TransE, "epochs": 1000, "batch_size": 16356, "kelpie_class": KelpieTransE},
     "ComplEx": {"class": CustomComplEx, "epochs": 1000, "batch_size": 16356, "kelpie_class": KelpieComplEx},
-    "ConvE": {"class": CustomConvE, "epochs": 1000, "batch_size": 16356, "kelpie_class": KelpieConvE},
+    "ConvE": {"class": CustomConvE, "epochs": 1000, "batch_size": 8192, "kelpie_class": KelpieConvE},
 }
 
 

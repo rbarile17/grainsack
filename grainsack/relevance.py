@@ -155,7 +155,14 @@ def dp_relevance(model, lr, aggregate, replication_entities, prediction, stateme
     for i in range(n_replications):
         lhs = model.entity_representations[0](replicated_prediction[i, 0].reshape(-1)).detach()
         rel = model.relation_representations[0](replicated_prediction[i, 1].reshape(-1)).detach()
-        rhs = model.entity_representations[0](replicated_prediction[i, 2].reshape(-1)).detach()
+        
+        if model._get_name() == "ConvE":
+            rhs = (
+                model.entity_representations[0](replicated_prediction[i, 2].reshape(-1)).detach(),
+                model.entity_representations[1](replicated_prediction[i, 2].reshape(-1)).detach()
+            )
+        else:
+            rhs = model.entity_representations[0](replicated_prediction[i, 2].reshape(-1)).detach()
 
         lhs.requires_grad = True
 
@@ -185,7 +192,13 @@ def dp_relevance(model, lr, aggregate, replication_entities, prediction, stateme
 
     statements = statements.reshape(-1, 3)
     lhs = model.entity_representations[0](statements[:, 0])
-    rhs = model.entity_representations[0](statements[:, 2])
+    if model._get_name() == "ConvE":
+        rhs = (
+            model.entity_representations[0](statements[:, 2]),
+            model.entity_representations[1](statements[:, 2])
+        )
+    else:
+        rhs = model.entity_representations[0](statements[:, 2])
     rel = model.relation_representations[0](statements[:, 1])
     embedding_dim = lhs.size(1)
 
