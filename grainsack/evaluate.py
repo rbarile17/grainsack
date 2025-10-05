@@ -1,13 +1,13 @@
 """This module implements the operation `evaluate` and the default prompt templates."""
 
-import unsloth
 import torch
 from transformers import pipeline
-from unsloth import FastLanguageModel
 
 from grainsack.kg import KG
 from grainsack.kge_lp import rank
 from grainsack.utils import load_kge_model, read_json
+
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 import time
 
@@ -35,12 +35,14 @@ An explanation is a set of triples relevant to the prediction.
 Explanation:
 """
 
+
 def build_explanation(explanation):
     explanation = [f"({s}, {p}, {o})\n" for (s, p, o) in explanation]
     explanation = "\n".join(explanation)
     explanation = f"{EXPLANATION_HOOK}\n{explanation}"
 
     return explanation
+
 
 def run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eval_config):
     """Evaluate the given explanations based on the given data, models, and config.
@@ -51,8 +53,8 @@ def run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eva
     :param explained_predictions: The explanations (each associated to a prediction) to be evaluated.
     :type explained_predictions: dict
     :param kg: The KG used for the explanations and to be possibly (depending on the prompting method in the evaluation config) used for the evaluation.
-    :type kg: KG 
-    :param kge_model_path: The path to the KGE .pt model file used for the explanations and 
+    :type kg: KG
+    :param kge_model_path: The path to the KGE .pt model file used for the explanations and
     to be possibly used (depending on the prompting method) for the evaluation.
     :type kge_model_path: pathlib.Path
     :param kge_config_path: The path to the KGE .json config file used for the explanations and
@@ -84,7 +86,6 @@ def run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eva
 
         return prediction_examples
 
-
     def format_prompt(explained_prediction, examples, ranking, include_explanation=False):
         subject, predicate, _ = explained_prediction["prediction"]
         explanation = build_explanation(explained_prediction["explanation"]) if include_explanation else ""
@@ -109,19 +110,32 @@ def run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eva
         user_prompt = USER_PROMPT.format(**query)
 
         system_prompt = SYSTEM_PROMPT.format(
-            ranking=f"The entity name that you provide must be in the following list of entity names: {ranking}" if ranking is not None else ""
+            ranking=(
+                f"The entity name that you provide must be in the following list of entity names: {ranking}"
+                if ranking is not None
+                else ""
+            )
         )
 
         prompt = [{"role": "system", "content": system_prompt}] + examples_messages + [{"role": "user", "content": user_prompt}]
 
         return prompt
 
-    llm_id = eval_config.get("llm_id", "unsloth/Llama-3.2-1B-Instruct-bnb-4bit")
+    llm_id = eval_config.get("llm_id", "Meta-Llama-3.1-70B-Instruct")
     prompting = eval_config.get("prompting", "zero-shot")
+    quantization_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16)
+    llm = AutoModelForCausalLM.from_pretrained(llm_id, quantization_config=quantization_config, device_map="auto")
+    tokenizer = AutoTokenizer.from_pretrained(llm_id, padding_side="left")
 
-    llm, tokenizer = FastLanguageModel.from_pretrained(model_name=llm_id, load_in_4bit=True)
-    pipe = pipeline(task="text-generation", model=llm, tokenizer=tokenizer, truncation=True, padding=True)
-    FastLanguageModel.for_inference(llm)
+    print(llm.config.eos_token_id[0])
+    print(tokenizer.eos_token_id)
+
+    pipe = pipeline(
+        task="text-generation", model=llm, tokenizer=tokenizer, truncation=True, padding=True, pad_token_id=tokenizer.eos_token_id
+    )
+
+    pipe.tokenizer.pad_token_id = llm.config.eos_token_id[0]
+
 
     predictions = [ex["prediction"] for ex in explained_predictions]
     gts = [o for _, _, o in predictions]
@@ -153,7 +167,7 @@ def run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eva
         for i in range(len(predictions))
     ]
     start_time = time.perf_counter()
-    simulations = pipe(prompts, max_new_tokens=64, use_cache=True)
+    simulations = pipe(prompts, max_new_tokens=64, use_cache=True, batch_size=8)
     end_time = time.perf_counter()
     simulation_time = end_time - start_time
     simulations = [simulation[0]["generated_text"][-1]["content"] for simulation in simulations]
