@@ -149,6 +149,25 @@ def build_combinatorial_optimization_explainer(kg, kge_model_path, kge_config, l
             explain_partial = partial(get_explanation_from_fr200k, explained_predictions, kg)
         else:
             raise ValueError(f"Unknown ground truth: {method}")
+    elif "baseline" in method:
+        if method == "baseline1":
+            explain_partial = partial(random_baseline, kg, 1)
+        elif method == "baseline2":
+            explain_partial = partial(same_subject_baseline, kg, 1)
+        elif method == "baseline3":
+            explain_partial = partial(same_object_baseline, kg, 1)
+        elif method == "baseline4":
+            explain_partial = partial(same_predicate_baseline, kg, 1)
+        elif method == "baseline5":
+            explain_partial = partial(random_baseline, kg, 2)
+        elif method == "baseline6":
+            explain_partial = partial(same_subject_baseline, kg, 2)
+        elif method == "baseline7":
+            explain_partial = partial(same_object_baseline, kg, 2)
+        elif method == "baseline8":
+            explain_partial = partial(same_predicate_baseline, kg, 2)
+        else:
+            raise ValueError(f"Unknown method: {method}")
     else:
         raise ValueError(f"Unknown method: {method}")
     return explain_partial
@@ -176,7 +195,7 @@ def select_replication_entities(kg, kge_model, prediction, k=10):
     replications[:, 0] = entities
     replications[:, 1] = prediction[1]
     replications[:, 2] = prediction[2]
-    training_triples = kg.training_triples.unsqueeze(0)[:, :1000, :]
+    training_triples = kg.training_triples.unsqueeze(0)
     mask = (replications.unsqueeze(1) == training_triples).all(dim=-1).any(dim=-1)
     replications = replications[~mask]
     entities = entities[~mask]
@@ -258,28 +277,28 @@ def get_explanation_from_fruni(explained_predictions, kg, prediction):
     return explanation.to_dict(orient="records")
 
 
-def random_baseline(kg, length):
+def random_baseline(kg, length, prediction):
     """Select a random triple from the KG as explanation."""
     indices = torch.randperm(kg.training_triples.size(0))[:length]
-    return kg.training_triples[indices]
+    return [kg.training_triples[indices]]
 
 
-def same_subject_baseline(kg, prediction, length):
+def same_subject_baseline(kg, length, prediction):
     """Explain the prediction by selecting a random triple with the same subject as the prediction."""
     training_triples = kg.training_triples[kg.training_triples[:, 0] == prediction[0]]
     indices = torch.randperm(training_triples.size(0))[:length]
-    return training_triples[indices]
+    return [training_triples[indices]]
 
 
-def same_predicate_baseline(kg, prediction, length):
+def same_predicate_baseline(kg, length, prediction):
     """Explain the prediction by selecting a random triple with the same predicate as the prediction."""
-    training_triples = kg.training_triples[kg.training_triples[:, 1] == prediction[0]]
+    training_triples = kg.training_triples[kg.training_triples[:, 1] == prediction[1]]
     indices = torch.randperm(training_triples.size(0))[:length]
-    return training_triples[indices]
+    return [training_triples[indices]]
 
 
-def same_object_baseline(kg, prediction, length):
+def same_object_baseline(kg, length, prediction):
     """Explain the prediction by selecting a random triple with the same object as the prediction."""
-    training_triples = kg.training_triples[kg.training_triples[:, 1] == prediction[0]]
+    training_triples = kg.training_triples[kg.training_triples[:, 2] == prediction[2]]
     indices = torch.randperm(training_triples.size(0))[:length]
-    return training_triples[indices]
+    return [training_triples[indices]]
