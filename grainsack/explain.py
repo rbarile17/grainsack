@@ -102,7 +102,7 @@ def build_combinatorial_optimization_explainer(kg, kge_model_path, kge_config, l
             summarize_partial = lambda x: (x, [])
 
         if method == KELPIE:
-            max_length = 4
+            max_length = 2
             sift_partial = partial(topology_sift, kg)
             fuse = remove_statements if mode == NECESSARY else add_statements
             relevance_partial = partial(estimate_rank_variation, kg, kge_model, kge_config, fuse, mode=mode)

@@ -227,7 +227,7 @@ class KelpieConvE(CustomConvE):
 
     def __init__(self, triples_factory, model, config, n_replications, n_statements):
         """Initialize the Kelpie ConvE model."""
-        super().__init__(triples_factory=triples_factory, **config, random_seed=42)
+        super().__init__(triples_factory=triples_factory, **config, random_seed=42, apply_batch_normalization=False)
 
         weight = model.entity_representations[0]()
         max_id = self.entity_representations[0].max_id

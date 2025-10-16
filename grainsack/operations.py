@@ -162,9 +162,9 @@ def rank(kg_name, kge_model_path, kge_config_path, output_path):
     """
     set_seeds(42)
 
-    kg = KG(kg_name)
-
     kge_config = read_json(kge_config_path)
+
+    kg = KG(kg_name, create_inverse_triples=kge_config["model"] == "ConvE")
 
     kge_model = load_kge_model(kge_model_path, kge_config, kg)
     kge_model.eval()
@@ -181,6 +181,31 @@ def rank(kg_name, kge_model_path, kge_config_path, output_path):
     output = np.concatenate((kg.testing.triples, ranks.reshape(-1, 1)), axis=1)
     output = pd.DataFrame(output, columns=["s", "p", "o", "rank"])
     output.to_csv(output_path, index=False, sep=";")
+
+
+@cli.command(help="Evaluate the given KGE model on the given KG.")
+@click.option("--kg_name", help="The name of the KG to compute the ranks for.")
+@click.option("--kge_model_path", type=click.Path(exists=True), help="The path to the KGE .pt model file.")
+@click.option("--kge_config_path", type=click.Path(exists=True), help="The path to the KGE .json config file.")
+@click.option("--output_path", type=click.Path(), default="predictions.csv", help="The path to save the predictions with ranks.")
+def evaluate_lp(kg_name, kge_model_path, kge_config_path, output_path):
+    set_seeds(42)
+
+    kge_config = read_json(kge_config_path)
+
+    kg = KG(kg_name, create_inverse_triples=kge_config["model"] == "ConvE")
+
+    kge_model = load_kge_model(kge_model_path, kge_config, kg)
+    kge_model.eval()
+    kge_model.cuda()
+
+    evaluator = RankBasedEvaluator()
+    mapped_triples = kg.testing.mapped_triples
+    mapped_triples = mapped_triples.cuda()
+    filter_triples = [kg.training.mapped_triples.cuda(), kg.validation.mapped_triples.cuda()]
+    results = evaluator.evaluate(kge_model, mapped_triples, batch_size=8192, additional_filter_triples=filter_triples)
+
+    results.to_df().to_csv(kge_config["model"] + "_results.csv")
 
 
 @cli.command(help="Select the top ranked triples from the given triples. Save the selected triples to a .csv file.")
@@ -205,7 +230,8 @@ def select_predictions(predictions_path, output_path):
     predictions = predictions[predictions["rank"] == 1]
     predictions.drop(["rank"], axis=1, inplace=True)
 
-    predictions = predictions.sample(100, random_state=42)
+    sample_size = min(100, len(predictions))
+    predictions = predictions.sample(sample_size, random_state=42)
     predictions = predictions.reset_index(drop=True)
 
     predictions.to_csv(output_path, sep="\t", index=False, header=False)
@@ -350,12 +376,14 @@ def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, eval_c
     kg = KG(kg=kg_name, create_inverse_triples=kge_config["model"] == "ConvE")
 
     eval_config = json.loads(eval_config)
-    evalautions, simulations_time, post_exp_simulations_time = run_evaluate(explained_predictions, kg, kge_model_path, kge_config_path, eval_config)
+    evaluations, simulations_time, post_exp_simulations_time = run_evaluate(
+        explained_predictions, kg, kge_model_path, kge_config_path, eval_config
+    )
 
     exp = {
-        "evaluations": evalautions,
+        "evaluations": evaluations,
         "simulations_time": simulations_time,
-        "post_exp_simulations_time": post_exp_simulations_time
+        "post_exp_simulations_time": post_exp_simulations_time,
     }
 
     write_json(exp, output_path)
