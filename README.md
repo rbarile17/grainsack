@@ -10,3 +10,7 @@ pip install grainsack
 ## Documentation
 
 [Documentation](docs)
+
+## Datasets
+
+[Datasets](https://doi.org/10.6084/m9.figshare.29066612.v1)
