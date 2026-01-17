@@ -29,13 +29,9 @@ KELPIE = "kelpie"
 KELPIEPP = "kelpie++"
 GROUND_TRUTH = "ground-truth"
 
-NECESSARY = "necessary"
-SUFFICIENT = "sufficient"
-
 SIMULATION = "simulation"
 BISIMULATION = "bisimulation"
 
 SUMMARIZATION_METHODS = [SIMULATION, BISIMULATION]
 
-MODES = [NECESSARY, SUFFICIENT]
 MODELS = [CONVE, COMPLEX, TRANSE]

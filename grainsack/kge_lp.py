@@ -38,14 +38,13 @@ class NoResetEmbedding(torch.nn.Embedding):
 class KelpieEmbedding(Embedding):
     """Embedding layer for the Kelpie model."""
 
-    def __init__(self, weight, max_id: int, shape: int, n_replications: int, n_statements: int, dtype=torch.float):
+    def __init__(self, weight, max_id: int, shape: int, n_statements: int, dtype=torch.float):
         """Initialize the Kelpie embedding.
         Args:
             weight: The weight of the embedding.
             max_id: The maximum id of the embedding.
             shape: The shape of the embedding.
-            n_conversions: The number of conversions.
-            n_candidates: The number of candidates.
+            n_statements: The number of statements.
         """
         super().__init__(max_id=max_id, shape=shape, dtype=dtype)
 
@@ -59,9 +58,8 @@ class KelpieEmbedding(Embedding):
         self._embeddings = NoResetEmbedding(weight, num_embeddings=max_id, embedding_dim=self.embedding_dim)
         if self.embedding_dim == 1:
             self._embeddings.weight.data = self._embeddings.weight.data.unsqueeze(-1)
-        n_kelpie = n_statements * n_replications
         self.kelpie_embeddings = ModuleList(
-            [NoResetEmbedding(num_embeddings=1, embedding_dim=self.embedding_dim) for _ in range(n_kelpie)]
+            [NoResetEmbedding(num_embeddings=1, embedding_dim=self.embedding_dim) for _ in range(n_statements)]
         )
         self._embeddings.weight.requires_grad = False
         for kelpie_embedding in self.kelpie_embeddings:
@@ -121,7 +119,7 @@ class KelpieRelationEmbeddings(Embedding):
 class KelpieTransE(TransE):
     """Kelpie TransE model."""
 
-    def __init__(self, triples_factory, model: Model, config, n_replications, n_statements):
+    def __init__(self, triples_factory, model: Model, config, n_statements):
         """Initialize the Kelpie TransE model.
         Args:
             triples_factory: The triples factory.
@@ -135,7 +133,7 @@ class KelpieTransE(TransE):
         weight = model.entity_representations[0]()
         max_id = self.entity_representations[0].max_id
         shape = self.entity_representations[0].shape
-        self.entity_representations[0] = KelpieEmbedding(weight, max_id, shape, n_replications, n_statements)
+        self.entity_representations[0] = KelpieEmbedding(weight, max_id, shape, n_statements)
 
         weight = model.relation_representations[0]()
         max_id = self.relation_representations[0].max_id
@@ -248,8 +246,8 @@ class KelpieConvE(CustomConvE):
 
 
 MODEL_REGISTRY = {
-    "TransE": {"class": TransE, "epochs": 1000, "batch_size": 16356, "kelpie_class": KelpieTransE},
-    "ComplEx": {"class": CustomComplEx, "epochs": 1000, "batch_size": 16356, "kelpie_class": KelpieComplEx},
+    "TransE": {"class": TransE, "epochs": 1, "batch_size": 32, "kelpie_class": KelpieTransE},
+    "ComplEx": {"class": CustomComplEx, "epochs": 1, "batch_size": 32, "kelpie_class": KelpieComplEx},
     "ConvE": {"class": CustomConvE, "epochs": 1000, "batch_size": 8192, "kelpie_class": KelpieConvE},
 }
 
