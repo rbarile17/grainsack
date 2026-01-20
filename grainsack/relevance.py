@@ -7,7 +7,7 @@ from grainsack.kge_lp import MODEL_REGISTRY
 from grainsack.kge_lp import rank, train_kge_model
 
 
-def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, original_statements, partition):
+def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, original_statements, partition, operation=None):
     """Estimate the rank variation of a prediction due to each statement.
 
     Estimate the rank variation of a prediction due to a statement by
@@ -71,7 +71,12 @@ def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, o
 
     mimic_stmts = torch.cat(mimic_stmts, dim=0).reshape(-1, 3)
 
-    mimic_triples = mimic_triples[~((mimic_triples.unsqueeze(1) == mimic_stmts.unsqueeze(0)).all(dim=-1).any(dim=-1))]
+    if operation == "remove":
+        mimic_triples = mimic_triples[~((mimic_triples.unsqueeze(1) == mimic_stmts.unsqueeze(0)).all(dim=-1).any(dim=-1))]
+    elif operation == "add":
+        mimic_triples = torch.cat([mimic_triples, mimic_stmts], dim=0)
+    else:
+        raise ValueError(f"Unknown operation: {operation}")
 
     if mimic_triples.size(0) == 0:
         return torch.zeros(n).cuda()
@@ -80,7 +85,7 @@ def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, o
     train_kge_model(pt_model, mimic_triples, **kge_config)
     pt_ranks = rank(pt_model, mimic_prediction, filtr=[mimic_triples])
 
-    return base_ranks - pt_ranks
+    return pt_ranks - base_ranks
 
 
 def dp_relevance(model, lr, prediction, statements, lambd=1):
@@ -198,4 +203,4 @@ def criage_relevance(kg, model, prediction, statements):
     if relevance.dtype == torch.complex64 or relevance.dtype == torch.complex128:
         relevance = torch.abs(relevance)
 
-    return relevance
+    return -relevance

@@ -4,8 +4,7 @@ import networkx as nx
 import torch
 from bispy import compute_maximum_bisimulation
 
-
-def simulation(kg, triples):
+def simulation_summary(kg, triples):
     """Compute the simulation of a (sub-)graph"""
     partition = kg.get_partition(triples)
 

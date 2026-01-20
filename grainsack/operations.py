@@ -302,18 +302,15 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
     explanations, times = run_explain(predictions, kg, kge_model_path, kge_config, lpx_config, factory)
 
     output = []
-    if lpx_config["method"] != GROUND_TRUTH:
-        for i in range(len(predictions)):
-            output.append(
-                {
-                    "prediction": kg.label_triple(torch.tensor(predictions[i])),
-                    "explanation": kg.label_triples(explanations[i]),
-                    "time": times[i],
-                }
-            )
-        write_json(output, output_path)
-    else:
-        write_json(explanations, output_path)
+    for i in range(len(predictions)):
+        output.append(
+            {
+                "prediction": kg.label_triple(torch.tensor(predictions[i])),
+                "explanation": kg.label_triples(explanations[i]),
+                "time": times[i],
+            }
+        )
+    write_json(output, output_path)
 
 
 @cli.command(

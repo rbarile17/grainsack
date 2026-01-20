@@ -27,7 +27,7 @@ CRIAGE = "criage"
 DATA_POISONING = "dp"
 KELPIE = "kelpie"
 KELPIEPP = "kelpie++"
-GROUND_TRUTH = "ground-truth"
+IMAGINE = "imagine"
 
 SIMULATION = "simulation"
 BISIMULATION = "bisimulation"

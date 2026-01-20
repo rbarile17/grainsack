@@ -1,10 +1,11 @@
 """Implementation of the KG class."""
 
-from ast import literal_eval
+import pandas as pd
+from collections import defaultdict
 from typing import Dict
 
 import networkx as nx
-import pandas as pd
+from rdflib import Graph, RDF
 import torch
 from pykeen.datasets import get_dataset
 from pykeen.triples.triples_factory import TriplesFactory
@@ -16,7 +17,8 @@ class KG:
     """
     Class representing a knowledge graph.
     """
-    def __init__(self, kg: str, classes=False, create_inverse_triples=False) -> None:
+
+    def __init__(self, kg: str, create_inverse_triples=False) -> None:
         """
         Initialize the KG class.
         :param kg: The name of the knowledge graph.
@@ -24,24 +26,27 @@ class KG:
 
         self.name = kg
 
-        # rdflib_graph = Graph()
-        # rdflib_graph.parse(DATA_PATH / self.name / "train_rdf.ttl", format="nt")
+        train = KGS_PATH / self.name / "abox/splits/train.tsv"
+        test = KGS_PATH / self.name / "abox/splits/test.tsv"
+        valid = KGS_PATH / self.name / "abox/splits/valid.tsv"
 
-        training = KGS_PATH / self.name / "train.txt"
-        testing = KGS_PATH / self.name / "test.txt"
-        validation = KGS_PATH / self.name / "valid.txt"
-
-        self._kg = get_dataset(training=training, testing=testing, validation=validation, dataset_kwargs={"create_inverse_triples": create_inverse_triples})
+        dataset_kwargs = {"create_inverse_triples": create_inverse_triples}
+        self._kg = get_dataset(training=train, testing=test, validation=valid, dataset_kwargs=dataset_kwargs)
 
         self.id_to_entity: Dict = {v: k for k, v in self._kg.entity_to_id.items()}
         self.id_to_relation: Dict = {v: k for k, v in self._kg.relation_to_id.items()}
 
-        if classes:
-            entity_types = pd.read_csv(KGS_PATH / self.name / "entities.csv", converters={"classes": literal_eval})
-            entity_types["entity"] = entity_types["entity"].map(self.entity_to_id.get)
-            entity_types["classes_str"] = entity_types["classes"].map(", ".join)
+        rdf_kg = Graph()
+        rdf_kg.parse(KGS_PATH / self.name / "abox/splits/train.nt")
 
-            self.entity_types = entity_types
+        entity_types = defaultdict(list)
+        for s, _, o in rdf_kg.triples((None, RDF.type, None)):
+            entity_types[str(s)].append(str(o))
+
+        self.entity_types = pd.DataFrame(
+            [(e, "; ".join(classes)) for e, classes in entity_types.items()], columns=["entity", "classes_str"]
+        )
+        self.entity_types["entity"] = self.entity_types["entity"].map(self.entity_to_id.get)
 
         self.nx_graph = nx.MultiGraph()
         self.nx_graph.add_nodes_from(list(self.id_to_entity.keys()))

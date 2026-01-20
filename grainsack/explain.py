@@ -1,20 +1,18 @@
 """This module implements the operation `explain`, the components involved
 and the function factory for building the explain function from the explanation config."""
 
-from ast import literal_eval
 from functools import partial
 from itertools import combinations
 
 import time
 
-import pandas as pd
 import torch
 from tqdm import tqdm
 
-from . import BISIMULATION, CRIAGE, DATA_POISONING, FR200K, FRUNI, GROUND_TRUTH, KELPIE, KGS_PATH, SIMULATION
+from . import BISIMULATION, CRIAGE, DATA_POISONING, KELPIE, SIMULATION, IMAGINE
 from .relevance import criage_relevance, dp_relevance, estimate_rank_variation
-from .sift import criage_sift, topology_sift
-from .summarize import bisimulation_summary, simulation
+from .sift import criage_sift, topology_sift, get_statements, hypothesis
+from .summarize import bisimulation_summary, simulation_summary
 from .utils import load_kge_model
 
 
@@ -58,70 +56,75 @@ def build_combinatorial_optimization_explainer(kg, kge_model_path, kge_config, l
     """Function factory building the explanation method from the explanation config."""
 
     method = lpx_config["method"]
-    if method in [KELPIE, DATA_POISONING, CRIAGE]:
-        summarization = lpx_config["summarization"]
+    summarization = lpx_config["summarization"]
 
-        print(f"Loading KGE model...")
-        kge_model = load_kge_model(kge_model_path, kge_config, kg)
-        kge_model.eval()
-        kge_model.cuda()
+    print(f"Loading KGE model...")
+    kge_model = load_kge_model(kge_model_path, kge_config, kg)
+    kge_model.eval()
+    kge_model.cuda()
+
+    operation = None
+
+    if method == IMAGINE:
+        max_length = 2
+        summary, partition = simulation_summary(kg, kg.training_triples)
+
+        get_statements_partial = partial(hypothesis, kg, summary, partition)
+        sift_partial = partial(topology_sift, kg)
+        relevance_partial = partial(estimate_rank_variation, kg, kge_model, kge_config)
+
+        operation = "add"
 
         if summarization == SIMULATION:
-            summarize_partial = partial(simulation, kg)
+            summarize_partial = partial(simulation_summary, kg)
+        elif summarization == BISIMULATION:
+            summarize_partial = partial(bisimulation_summary, kg)
+        else:
+            summarize_partial = lambda x: (x, [])
+    elif method == KELPIE:
+        operation = "remove"
+        max_length = 2
+        if summarization == SIMULATION:
+            summarize_partial = partial(simulation_summary, kg)
         elif summarization == BISIMULATION:
             summarize_partial = partial(bisimulation_summary, kg)
         else:
             summarize_partial = lambda x: (x, [])
 
-        if method == KELPIE:
-            max_length = 2
-            sift_partial = partial(topology_sift, kg)
-            relevance_partial = partial(estimate_rank_variation, kg, kge_model, kge_config)
-        elif method == CRIAGE:
-            sift_partial = partial(criage_sift, kg)
-            relevance_partial = partial(criage_relevance, kg, kge_model)
-            max_length = 1
-        elif method == DATA_POISONING:
-            sift_partial = partial(topology_sift, kg)
-            relevance_partial = partial(dp_relevance, kge_model, kge_config["optimizer_kwargs"]["lr"])
-            max_length = 1
-        else:
-            raise ValueError(f"Unknown method: {method}")
-
-        explain_partial = partial(
-            run_combinatorial_optimization,
-            relevance_partial,
-            sift_partial,
-            summarize_partial,
-            max_length=max_length,
-            kelpie=(method == KELPIE),
-        )
-    elif method == GROUND_TRUTH:
-        if kg.name == FRUNI:
-            explained_predictions = pd.read_csv(
-                KGS_PATH / "FRUNI" / "explanations.txt",
-                sep="\t",
-                names=["prediction", "explanation", "fsv"],
-                converters={"explanation": literal_eval, "prediction": literal_eval},
-            )
-
-            explain_partial = partial(get_explanation_from_fruni, explained_predictions, kg)
-        elif kg.name == FR200K:
-            explained_predictions = pd.read_csv(
-                KGS_PATH / "FR200K" / "explanations.txt",
-                sep="\t",
-                names=["s", "p", "o", "explanation", "fsv"],
-                converters={"explanation": literal_eval},
-            )
-            explain_partial = partial(get_explanation_from_fr200k, explained_predictions, kg)
-        else:
-            raise ValueError(f"Unknown ground truth: {method}")
+        get_statements_partial = partial(get_statements, kg)
+        sift_partial = partial(topology_sift, kg)
+        relevance_partial = partial(estimate_rank_variation, kg, kge_model, kge_config)
+    elif method == CRIAGE:
+        summarize_partial = lambda x: (x, [])
+        get_statements_partial = partial(criage_sift, kg)
+        sift_partial = lambda x, y: y
+        relevance_partial = partial(criage_relevance, kg, kge_model)
+        max_length = 1
+    elif method == DATA_POISONING:
+        summarize_partial = lambda x: (x, [])
+        get_statements_partial = partial(get_statements, kg)
+        sift_partial = partial(topology_sift, kg)
+        relevance_partial = partial(dp_relevance, kge_model, kge_config["optimizer_kwargs"]["lr"])
+        max_length = 1
     else:
         raise ValueError(f"Unknown method: {method}")
+
+    explain_partial = partial(
+        run_combinatorial_optimization,
+        relevance_partial,
+        get_statements_partial,
+        sift_partial,
+        summarize_partial,
+        max_length=max_length,
+        kelpie=(method in [KELPIE, IMAGINE]),
+        operation=operation,
+    )
     return explain_partial
 
 
-def run_combinatorial_optimization(relevance, get_statements, summarize, prediction, max_length=2, kelpie=True):
+def run_combinatorial_optimization(
+    relevance, get_statements, sift, summarize, prediction, max_length=2, kelpie=True, operation=None
+):
     """Explain the prediction via combinatorial optimization.
 
     Select the most relevant statements related to the prediction.
@@ -133,7 +136,9 @@ def run_combinatorial_optimization(relevance, get_statements, summarize, predict
     :param max_explanation_length: the maximum number of statements in the explanation.
     """
     prediction = torch.tensor(prediction).cuda()
+
     original_statements = get_statements(prediction)
+    original_statements = sift(prediction, original_statements)
     statements, partition = summarize(original_statements)
     statements = statements.unsqueeze(1)
 
@@ -141,7 +146,7 @@ def run_combinatorial_optimization(relevance, get_statements, summarize, predict
         idx = torch.tensor(list(combinations(range(statements.size(0)), length)))
         combos = statements[idx].squeeze(2)
         if kelpie:
-            relevances = relevance(prediction, combos, original_statements, partition)
+            relevances = relevance(prediction, combos, original_statements, partition, operation=operation)
         else:
             relevances = relevance(prediction, combos)
 
@@ -158,29 +163,3 @@ def run_combinatorial_optimization(relevance, get_statements, summarize, predict
     mapped_statement = torch.tensor(mapped_statement, dtype=torch.int)
 
     return [mapped_statement]
-
-
-def get_explanation_from_fr200k(explained_predictions, kg, prediction):
-    """Explain the prediction by retrieving the explanation from FR200K."""
-    s, p, o = prediction
-    s = kg.id_to_entity[s]
-    p = kg.id_to_relation[p]
-    o = kg.id_to_entity[o]
-
-    explanation = explained_predictions[
-        (explained_predictions["s"] == s) & (explained_predictions["p"] == p) & (explained_predictions["o"] == o)
-    ]
-
-    explanation["prediction"] = explanation.apply(lambda row: (row["s"], row["p"], row["o"]), axis=1)
-    explanation.drop(columns=["s", "p", "o"], inplace=True)
-
-    return explanation.to_dict(orient="records")
-
-
-def get_explanation_from_fruni(explained_predictions, kg, prediction):
-    """Explain the prediction by retrieving the explanation from FRUNI."""
-    prediction = kg.label_triple(prediction)
-
-    explanation = explained_predictions[explained_predictions["prediction"] == prediction]
-
-    return explanation.to_dict(orient="records")
