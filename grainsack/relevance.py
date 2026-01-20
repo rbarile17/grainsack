@@ -1,39 +1,10 @@
 """Functions for computing the relevance of statements with respect to predictions."""
 
 import torch
-from torch.linalg import inv
 
 from grainsack.kge_lp import MODEL_REGISTRY
 
 from grainsack.kge_lp import rank, train_kge_model
-
-# mapped_statements = []
-# for statement in statements:
-#     statement = statement.reshape(-1, 3)
-#     mapped_statement = []
-#     for i, p, j in statement:
-#         if partition == []:
-#             mapped_statement.append((i, p, j))
-#         else:
-#             mapped_statement.extend([(s, p, o) for s in partition[i] for o in partition[j]])
-#     mapped_statements.append(torch.tensor(mapped_statement).cuda())
-
-# masks = [(s.unsqueeze(1) == original_statements).all(dim=-1).any(dim=1) for s in mapped_statements]
-# mapped_statements = [mapped_statements[i][masks[i]] for i in range(n_statements)]
-
-# kelpie_statements = [m.clone() for m in mapped_statements]
-
-# for i in range(n_statements):
-#     mask = kelpie_statements[i][:, [0, 2]] == prediction[0]
-#     kelpie_statements[i][:, [0, 2]] = torch.where(mask, kelpie_entities[:, i].unsqueeze(-1), kelpie_statements[i][:, [0, 2]])
-
-
-def train_and_rank(kg, kge_model, kge_config, model_class, triples, prediction, n):
-    model = model_class(kg.training, kge_model, kge_config["model_kwargs"], n).cuda()
-    train_kge_model(model, triples, **kge_config)
-    results = rank(model, prediction, filtr=[triples])
-
-    return results
 
 
 def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, original_statements, partition):
@@ -57,7 +28,7 @@ def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, o
 
     n = statements.size(0)
 
-    mimic_entities = torch.arange(n).cuda() + kg.num_entities
+    mimics = torch.arange(n).cuda() + kg.num_entities
 
     triples = kg.training_triples.clone()
 
@@ -67,24 +38,49 @@ def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, o
     mimic_triples = incident_triples.unsqueeze(0).expand(n, m, 3).clone()
 
     mask = mimic_triples[..., [0, 2]] == prediction[0]
-    mimic_triples[..., [0, 2]] = torch.where(mask, mimic_entities[:, None], mimic_triples[..., [0, 2]])
+    mimic_triples[..., [0, 2]] = torch.where(mask, mimics[:, None, None], mimic_triples[..., [0, 2]])
     mimic_triples = mimic_triples.reshape(-1, 3)
 
     mimic_prediction = prediction.unsqueeze(0).expand(n, -1).clone()
-    mimic_prediction[:, 0] = mimic_entities
+    mimic_prediction[:, 0] = mimics
 
     mimic_model_class = MODEL_REGISTRY[kge_model._get_name()]["kelpie_class"]
-    base_results = train_and_rank(kg, kge_model, kge_config, mimic_model_class, mimic_triples, mimic_prediction, n)
 
-    mimic_stmts = statements.clone()
-    mask = mimic_stmts[..., [0, 2]] == prediction[0]
-    mimic_stmts[..., [0, 2]] = torch.where(mask, mimic_entities[:, None], mimic_stmts[..., [0, 2]])
-    mimic_stmts = mimic_stmts.reshape(-1, 3)
+    base_model = mimic_model_class(kg.training, kge_model, kge_config["model_kwargs"], n).cuda()
+    train_kge_model(base_model, mimic_triples, **kge_config)
+    base_ranks = rank(base_model, mimic_prediction, filtr=[mimic_triples])
 
-    mimic_triples = mimic_triples[~(mimic_triples.unsqueeze(1) == mimic_stmts.unsqueeze(0)).all(dim=-1).any(dim=-1)]
+    mapped_stmts = []
+    for stmt in statements:
+        mapped_stmt = []
+        for i, p, j in stmt:
+            if partition == []:
+                mapped_stmt.append((i, p, j))
+            else:
+                mapped_stmt.extend([(s, p, o) for s in partition[i] for o in partition[j]])
+        mapped_stmts.append(torch.tensor(mapped_stmt).cuda())
 
-    pt_results = train_and_rank(kg, kge_model, kge_config, mimic_model_class, mimic_triples, mimic_prediction, n)
-    return base_results - pt_results
+    masks = [(s.unsqueeze(1) == original_statements).all(dim=-1).any(dim=1) for s in mapped_stmts]
+    mapped_stmts = [mapped_stmts[i][masks[i]] for i in range(n)]
+
+    mimic_stmts = [m.clone() for m in mapped_stmts]
+
+    for i in range(n):
+        mask = mimic_stmts[i][:, [0, 2]] == prediction[0]
+        mimic_stmts[i][:, [0, 2]] = torch.where(mask, mimics[i], mimic_stmts[i][:, [0, 2]])
+
+    mimic_stmts = torch.cat(mimic_stmts, dim=0).reshape(-1, 3)
+
+    mimic_triples = mimic_triples[~((mimic_triples.unsqueeze(1) == mimic_stmts.unsqueeze(0)).all(dim=-1).any(dim=-1))]
+
+    if mimic_triples.size(0) == 0:
+        return torch.zeros(n).cuda()
+
+    pt_model = mimic_model_class(kg.training, kge_model, kge_config["model_kwargs"], n).cuda()
+    train_kge_model(pt_model, mimic_triples, **kge_config)
+    pt_ranks = rank(pt_model, mimic_prediction, filtr=[mimic_triples])
+
+    return base_ranks - pt_ranks
 
 
 def dp_relevance(model, lr, prediction, statements, lambd=1):
@@ -103,7 +99,13 @@ def dp_relevance(model, lr, prediction, statements, lambd=1):
 
     lhs = model.entity_representations[0](prediction[0]).detach()
     rel = model.relation_representations[0](prediction[1]).detach()
-    rhs = model.entity_representations[0](prediction[2].reshape(-1)).detach()
+    if model._get_name() == "ConvE":
+        rhs = (
+            model.entity_representations[0](prediction[2].reshape(-1)).detach(),
+            model.entity_representations[1](prediction[2].reshape(-1)).detach(),
+        )
+    else:
+        rhs = model.entity_representations[0](prediction[2].reshape(-1)).detach()
     lhs.requires_grad = True
 
     score = model.interaction(lhs, rel, rhs)
@@ -118,7 +120,10 @@ def dp_relevance(model, lr, prediction, statements, lambd=1):
 
     lhs = model.entity_representations[0](statements[:, 0])
     rel = model.relation_representations[0](statements[:, 1])
-    rhs = model.entity_representations[0](statements[:, 2])
+    if model._get_name() == "ConvE":
+        rhs = (model.entity_representations[0](statements[:, 2]), model.entity_representations[1](statements[:, 2]))
+    else:
+        rhs = model.entity_representations[0](statements[:, 2])
 
     original_scores = model.interaction(lhs, rel, rhs)
 
@@ -138,11 +143,11 @@ def criage_relevance(kg, model, prediction, statements):
 
         x = lhs * rel
         entity_embedding = model.entity_representations[0](entity).detach()
-        x_2 = (x @ entity_embedding.squeeze())
+        x_2 = x @ entity_embedding.squeeze()
 
         sig = torch.sigmoid(x_2)
         sig = sig * (1 - sig)
-    
+
         Xw = x * sig.unsqueeze(-1)
         H = Xw.T @ x
 
