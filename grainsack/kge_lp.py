@@ -204,7 +204,7 @@ class CustomConvE(ConvE):
 class KelpieComplEx(CustomComplEx):
     """Kelpie ComplEx model."""
 
-    def __init__(self, triples_factory, model, config, n_replications, n_statements):
+    def __init__(self, triples_factory, model, config, n_statements):
         """Initialize the Kelpie ComplEx model."""
         super().__init__(triples_factory=triples_factory, **config, random_seed=42)
 
@@ -212,7 +212,7 @@ class KelpieComplEx(CustomComplEx):
         weight = torch.view_as_real(weight).reshape(weight.shape[0], -1)
         max_id = self.entity_representations[0].max_id
         shape = self.entity_representations[0].shape
-        self.entity_representations[0] = KelpieEmbedding(weight, max_id, shape, n_replications, n_statements, dtype=torch.cfloat)
+        self.entity_representations[0] = KelpieEmbedding(weight, max_id, shape, n_statements, dtype=torch.cfloat)
 
         weight = model.relation_representations[0]()
         max_id = self.relation_representations[0].max_id
@@ -223,19 +223,19 @@ class KelpieComplEx(CustomComplEx):
 class KelpieConvE(CustomConvE):
     """Kelpie ConvE model."""
 
-    def __init__(self, triples_factory, model, config, n_replications, n_statements):
+    def __init__(self, triples_factory, model, config, n_statements):
         """Initialize the Kelpie ConvE model."""
         super().__init__(triples_factory=triples_factory, **config, random_seed=42, apply_batch_normalization=False)
 
         weight = model.entity_representations[0]()
         max_id = self.entity_representations[0].max_id
         shape = self.entity_representations[0].shape
-        self.entity_representations[0] = KelpieEmbedding(weight, max_id, shape, n_replications, n_statements)
+        self.entity_representations[0] = KelpieEmbedding(weight, max_id, shape, n_statements)
 
         weight = model.entity_representations[1]()
         max_id = self.entity_representations[1].max_id
         shape = self.entity_representations[1].shape
-        self.entity_representations[1] = KelpieEmbedding(weight, max_id, shape, n_replications, n_statements)
+        self.entity_representations[1] = KelpieEmbedding(weight, max_id, shape, n_statements)
 
         weight = model.relation_representations[0]()
         max_id = self.relation_representations[0].max_id
