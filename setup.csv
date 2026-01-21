@@ -1,0 +1,9 @@
+kg_name;kge_model_name;lpx_config
+ATRAVEL-MATERIALIZE;TransE;{"method": "kelpie", "summarization": null}
+ATRAVEL-MATERIALIZE;TransE;{"method": "dp", "summarization": null}
+ATRAVEL-MATERIALIZE;ComplEx;{"method": "kelpie", "summarization": null}
+ATRAVEL-MATERIALIZE;ComplEx;{"method": "dp", "summarization": null}
+ATRAVEL-MATERIALIZE;ComplEx;{"method": "criage", "summarization": null}
+ATRAVEL-MATERIALIZE;ConvE;{"method": "kelpie", "summarization": null}
+ATRAVEL-MATERIALIZE;ConvE;{"method": "dp", "summarization": null}
+ATRAVEL-MATERIALIZE;ConvE;{"method": "criage", "summarization": null}
