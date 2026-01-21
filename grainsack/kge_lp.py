@@ -246,8 +246,8 @@ class KelpieConvE(CustomConvE):
 
 
 MODEL_REGISTRY = {
-    "TransE": {"class": TransE, "epochs": 1, "batch_size": 32, "kelpie_class": KelpieTransE},
-    "ComplEx": {"class": CustomComplEx, "epochs": 1, "batch_size": 32, "kelpie_class": KelpieComplEx},
+    "TransE": {"class": TransE, "epochs": 1000, "batch_size": 16356, "kelpie_class": KelpieTransE},
+    "ComplEx": {"class": CustomComplEx, "epochs": 1000, "batch_size": 16356, "kelpie_class": KelpieComplEx},
     "ConvE": {"class": CustomConvE, "epochs": 1000, "batch_size": 8192, "kelpie_class": KelpieConvE},
 }
 

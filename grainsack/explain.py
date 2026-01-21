@@ -142,6 +142,9 @@ def run_combinatorial_optimization(
     statements, partition = summarize(original_statements)
     statements = statements.unsqueeze(1)
 
+    if statements.size(0) == 0:
+        return [[]]
+
     for length in range(1, min(statements.size(0), max_length) + 1):
         idx = torch.tensor(list(combinations(range(statements.size(0)), length)))
         combos = statements[idx].squeeze(2)

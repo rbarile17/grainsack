@@ -2,6 +2,8 @@
 
 import torch
 
+from grainsack import CONVE
+
 from grainsack.kge_lp import MODEL_REGISTRY
 
 from grainsack.kge_lp import rank, train_kge_model
@@ -125,7 +127,7 @@ def dp_relevance(model, lr, prediction, statements, lambd=1):
 
     lhs = model.entity_representations[0](statements[:, 0])
     rel = model.relation_representations[0](statements[:, 1])
-    if model._get_name() == "ConvE":
+    if model._get_name() == CONVE:
         rhs = (model.entity_representations[0](statements[:, 2]), model.entity_representations[1](statements[:, 2]))
     else:
         rhs = model.entity_representations[0](statements[:, 2])
