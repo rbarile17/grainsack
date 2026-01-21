@@ -68,7 +68,7 @@ def tune(kg_name, kge_model_name, output_path):
     batch_size = MODEL_REGISTRY[kge_model_name]["batch_size"]
 
     config = hpo_pipeline(
-        timeout=4 * 60 * 60,
+        n_trials=500,
         training=kg.training,
         validation=kg.validation,
         testing=kg.testing,

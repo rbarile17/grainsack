@@ -230,11 +230,13 @@ class Explain(luigi.Task):
 
         lpx_config_hash = hash_json_string(self.lpx_config)
 
+        lpx_config = json.loads(self.lpx_config)
+
         self.predictions_path = SELECTED_PREDICTIONS_PATH / f"{self.kg_name}_{self.kge_model_name}.csv"
         self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
         self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
-        self.output_path = EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config_hash}.json"
-        self.log_path = LOGS_PATH / f"explain_{self.kg_name}_{self.kge_model_name}_{lpx_config_hash}.log"
+        self.output_path = EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+        self.log_path = LOGS_PATH / f"explain_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
 
     def requires(self):
         """Declare dependencies."""
@@ -296,11 +298,13 @@ class Evaluate(luigi.Task):
         lpx_config_hash = hash_json_string(self.lpx_config)
         lpx_and_eval_config_hash = hash_json_string(self.lpx_config, self.eval_config)
 
+        lpx_config = json.loads(self.lpx_config)
+
         self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
         self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
-        self.explanations_path = EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config_hash}.json"
-        self.output_path = EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_and_eval_config_hash}.json"
-        self.log_path = LOGS_PATH / f"evaluate_{self.kg_name}_{self.kge_model_name}_{lpx_and_eval_config_hash}.log"
+        self.explanations_path = EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+        self.output_path = EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+        self.log_path = LOGS_PATH / f"evaluate_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
 
     def requires(self):
         """Declare dependencies."""
@@ -317,12 +321,6 @@ class Evaluate(luigi.Task):
             self.explanations_path,
             "--kg_name",
             self.kg_name,
-            "--kge_model_path",
-            self.kge_model_path,
-            "--kge_config_path",
-            self.kge_config_path,
-            "--eval_config",
-            self.eval_config,
             "--output_path",
             self.output_path,
         ]
@@ -334,10 +332,9 @@ class Evaluate(luigi.Task):
         args = [
             self.explanations_path,
             self.kg_name,
-            self.kge_model_path,
-            self.kge_config_path,
             self.eval_config,
             self.output_path,
+            self.log_path
         ]
         return args
 
@@ -369,9 +366,11 @@ class Metrics(luigi.Task):
 
     def run(self):
         """Execute the task."""
-        config_hash = hash_json_string(self.lpx_config, self.eval_config)
-        file = EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{config_hash}.json"
+        lpx_config = json.loads(self.lpx_config)
+
+        file = EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['mode']}_{lpx_config['summarization']}.json"
         evaluated_explanations = read_json(file)
+        evaluated_explanations = evaluated_explanations["evaluations"]
 
         if self.metric_name == "validation_metrics":
             print("Validation metrics")
@@ -393,7 +392,7 @@ class Metrics(luigi.Task):
                 },
             }
 
-        output = METRICS_PATH / f"{self.kg_name}_{self.kge_model_name}_{config_hash}.json"
+        output = METRICS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['mode']}_{lpx_config['summarization']}.json"
 
         write_json(metrics, output)
 
