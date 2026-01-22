@@ -171,22 +171,14 @@ def criage_relevance(kg, model, prediction, statements):
     subject_mask = statements[:, 2] == prediction[0]
     object_mask = statements[:, 2] == prediction[2]
 
-    statements[:, 2] = prediction[0]
+    criage_prediction = prediction.unsqueeze(0).repeat(n_statements, 1).clone()
+    criage_prediction[subject_mask] = statements[subject_mask][:, [2, 1, 0]]
 
-    criage_prediction = prediction.unsqueeze(0).repeat(n_statements, 1)
+    hessian_head = get_hessian(model, prediction[0], kg.training_triples[kg.training_triples[:, 2] == prediction[0]])
+    hessian_tail = get_hessian(model, prediction[0], kg.training_triples[kg.training_triples[:, 2] == prediction[0]])
 
-    criage_prediction[:, 0] = torch.where(subject_mask, prediction[0], criage_prediction[:, 0])
-    criage_prediction[:, 2] = torch.where(subject_mask, prediction[0], criage_prediction[:, 2])
-
-    subjects = criage_prediction[:, 0].clone()
-    objects = criage_prediction[:, 2].clone()
-    criage_prediction[:, 0] = torch.where(object_mask, objects, subjects)
-    criage_prediction[:, 2] = torch.where(object_mask, subjects, objects)
-
-    z_pred = model.criage_first_step(criage_prediction).detach()
-    z_candidates = model.criage_first_step(statements).detach()
-
-    hessian = get_hessian(model, prediction[0], kg.training_triples[kg.training_triples[:, 2] == prediction[0]])
+    z_pred = model.criage_first_step(criage_prediction[subject_mask]).detach()
+    z_candidates = model.criage_first_step(statements[subject_mask]).detach()
 
     entity_embedding = model.entity_representations[0](prediction[0]).detach()
 
@@ -196,13 +188,37 @@ def criage_relevance(kg, model, prediction, statements):
 
     outer = z_candidates.unsqueeze(2) * z_candidates.unsqueeze(1)
 
-    m = hessian.unsqueeze(0) + phi1mphi.view(-1, 1, 1) * outer
+    m = hessian_head.unsqueeze(0) + phi1mphi.view(-1, 1, 1) * outer
     sol = torch.linalg.solve(m, z_candidates.unsqueeze(-1)).squeeze(-1)
     dot = (1 - phi).unsqueeze(-1) * sol
 
-    relevance = (z_pred * dot).sum(dim=-1)
+    relevance_head = (z_pred * dot).sum(dim=-1)
 
-    if relevance.dtype == torch.complex64 or relevance.dtype == torch.complex128:
-        relevance = torch.abs(relevance)
+    if relevance_head.dtype  == torch.complex64 or relevance_head.dtype == torch.complex128:
+        relevance_head = torch.abs(relevance_head)
+
+    z_pred = model.criage_first_step(criage_prediction[object_mask]).detach()
+    z_candidates = model.criage_first_step(statements[object_mask]).detach()
+
+    entity_embedding = model.entity_representations[0](prediction[2]).detach()
+
+    x_2 = z_candidates @ entity_embedding
+    phi = torch.sigmoid(x_2)
+    phi1mphi = phi * (1.0 - phi)
+
+    outer = z_candidates.unsqueeze(2) * z_candidates.unsqueeze(1)
+
+    m = hessian_tail.unsqueeze(0) + phi1mphi.view(-1, 1, 1) * outer
+    sol = torch.linalg.solve(m, z_candidates.unsqueeze(-1)).squeeze(-1)
+    dot = (1 - phi).unsqueeze(-1) * sol
+
+    relevance_tail = (z_pred * dot).sum(dim=-1)
+
+    if relevance_tail.dtype  == torch.complex64 or relevance_tail.dtype == torch.complex128:
+        relevance_tail = torch.abs(relevance_tail)
+
+    relevance = torch.zeros(n_statements).cuda()
+    relevance[subject_mask] = relevance_head
+    relevance[object_mask] = relevance_tail
 
     return -relevance
