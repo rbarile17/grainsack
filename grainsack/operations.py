@@ -68,7 +68,7 @@ def tune(kg_name, kge_model_name, output_path):
     batch_size = MODEL_REGISTRY[kge_model_name]["batch_size"]
 
     config = hpo_pipeline(
-        n_trials=500,
+        timeout=8 * 60 * 60 if kge_model_name != "TransE" else 4 * 60 * 60, 
         training=kg.training,
         validation=kg.validation,
         testing=kg.testing,
@@ -323,7 +323,7 @@ def validation():
 @cli.command()
 def comparison():
     """Run the comparison workflow adopting the setup in comparison_setup.csv."""
-    luigi.build([Comparison()], local_scheduler=True)
+    luigi.build([Comparison()], local_scheduler=True, workers=64)
 
 
 if __name__ == "__main__":

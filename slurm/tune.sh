@@ -6,6 +6,7 @@
 #SBATCH --account=IscrC_MINA
 #SBATCH --partition=boost_usr_prod
 #SBATCH --qos=normal
+#SBATCH --mem=64G
 
 kg_name=$1
 kge_model_name=$2

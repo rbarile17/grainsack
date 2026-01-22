@@ -6,6 +6,7 @@
 #SBATCH --account=IscrC_MINA
 #SBATCH --partition=boost_usr_prod
 #SBATCH --qos=boost_qos_lprod
+#SBATCH --mem=64G
 
 predictions_path=$1
 kg_name=$2

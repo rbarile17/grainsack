@@ -82,6 +82,7 @@ def run_evaluate(explanations, kg_name):
 
     predictions = [ex["prediction"] for ex in explanations]
     gts = [o for _, _, o in predictions]
+    gts = [ind_labels.get(gt, gt.split("/")[-1]) for gt in gts]
 
     print("Running pre-explanation simulations...")
     prompts = [format_prompt(explanations[i]) for i in range(len(predictions))]

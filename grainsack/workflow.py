@@ -235,8 +235,12 @@ class Explain(luigi.Task):
         self.predictions_path = SELECTED_PREDICTIONS_PATH / f"{self.kg_name}_{self.kge_model_name}.csv"
         self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
         self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
-        self.output_path = EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
-        self.log_path = LOGS_PATH / f"explain_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
+        self.output_path = (
+            EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+        )
+        self.log_path = (
+            LOGS_PATH / f"explain_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
+        )
 
     def requires(self):
         """Declare dependencies."""
@@ -290,21 +294,23 @@ class Evaluate(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
     lpx_config = luigi.Parameter()
-    eval_config = luigi.Parameter()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        lpx_config_hash = hash_json_string(self.lpx_config)
-        lpx_and_eval_config_hash = hash_json_string(self.lpx_config, self.eval_config)
 
         lpx_config = json.loads(self.lpx_config)
 
         self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
         self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
-        self.explanations_path = EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
-        self.output_path = EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
-        self.log_path = LOGS_PATH / f"evaluate_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
+        self.explanations_path = (
+            EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+        )
+        self.output_path = (
+            EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+        )
+        self.log_path = (
+            LOGS_PATH / f"evaluate_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
+        )
 
     def requires(self):
         """Declare dependencies."""
@@ -316,26 +322,13 @@ class Evaluate(luigi.Task):
 
     def params_as_args(self):
         """Convert parameters to command line arguments."""
-        args = [
-            "--explanations_path",
-            self.explanations_path,
-            "--kg_name",
-            self.kg_name,
-            "--output_path",
-            self.output_path,
-        ]
+        args = ["--explanations_path", self.explanations_path, "--kg_name", self.kg_name, "--output_path", self.output_path]
         return args
 
     def slurm_params_as_args(self):
         """Convert parameters to command line arguments."""
 
-        args = [
-            self.explanations_path,
-            self.kg_name,
-            self.eval_config,
-            self.output_path,
-            self.log_path
-        ]
+        args = [self.explanations_path, self.kg_name, self.output_path, self.log_path]
         return args
 
     def run(self):
@@ -349,52 +342,40 @@ class Metrics(luigi.Task):
     kg_name = luigi.Parameter()
     kge_model_name = luigi.Parameter()
     lpx_config = luigi.Parameter()
-    eval_config = luigi.Parameter()
     metric_name = luigi.Parameter()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        lpx_config = json.loads(self.lpx_config)
+
+        self.evaluations_path = (
+            EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+        )
+        self.output_path = (
+            METRICS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+        )
 
     def requires(self):
         """Declare dependencies"""
-        return Evaluate(
-            kg_name=self.kg_name, kge_model_name=self.kge_model_name, lpx_config=self.lpx_config, eval_config=self.eval_config
-        )
+        return Evaluate(kg_name=self.kg_name, kge_model_name=self.kge_model_name, lpx_config=self.lpx_config)
 
     def output(self):
         """Declare output file."""
-        config_hash = hash_json_string(self.lpx_config, self.eval_config)
-        file = METRICS_PATH / f"{self.kg_name}_{self.kge_model_name}_{config_hash}.json"
-        return luigi.LocalTarget(file)
+        return luigi.LocalTarget(self.output_path)
 
     def run(self):
         """Execute the task."""
-        lpx_config = json.loads(self.lpx_config)
+        evaluated_explanations = read_json(self.evaluations_path)
 
-        file = EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['mode']}_{lpx_config['summarization']}.json"
-        evaluated_explanations = read_json(file)
-        evaluated_explanations = evaluated_explanations["evaluations"]
+        fsv = [x["fsv"] for x in evaluated_explanations]
 
-        if self.metric_name == "validation_metrics":
-            print("Validation metrics")
-            lpx_config_hash = hash_json_string(self.lpx_config)
-            gt = read_json(EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config_hash}.json")
-            gt_fsv = [x["fsv"] for x in gt]
-            fsv = [x["fsv"] for x in evaluated_explanations]
+        metrics = {
+            "average_fsv": sum(fsv) / len(fsv),
+            "fsv_distribution": {"1": fsv.count(1), "0": fsv.count(0), "-1": fsv.count(-1)},
+        }
 
-            metrics = classification_report(gt_fsv, fsv, output_dict=True)
-        elif self.metric_name == "comparison_metrics":
-            fsv = [x["fsv"] for x in evaluated_explanations]
-
-            metrics = {
-                "average_fsv": sum(fsv) / len(fsv),
-                "fsv_distribution": {
-                    "1": fsv.count(1),
-                    "0": fsv.count(0),
-                    "-1": fsv.count(-1),
-                },
-            }
-
-        output = METRICS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['mode']}_{lpx_config['summarization']}.json"
-
-        write_json(metrics, output)
+        write_json(metrics, self.output_path)
 
 
 class Comparison(luigi.WrapperTask):
