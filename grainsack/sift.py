@@ -77,7 +77,23 @@ def hypothesis(kg, summary, partition, prediction):
     triples = triples[(triples != prediction.cpu()).any(dim=1)]
 
     train = kg.training_triples.to(triples.device)
-    is_training = (triples[:, None, :] == train[None, :, :]).all(dim=2).any(dim=1)
-    triples = triples[~is_training]
+
+    max_p = max(triples[:,1].max(), train[:,1].max()).item()
+    max_o = max(triples[:,2].max(), train[:,2].max()).item()
+
+    B_o = max_o + 1
+    B_p = max_p + 1
+
+    def pack(t):
+        return t[:,0] * (B_p * B_o) + t[:,1] * B_o + t[:,2]
+
+    packed_triples = pack(triples)
+    packed_train   = pack(train)
+
+    mask_in_train = torch.isin(packed_triples, packed_train)
+    triples = triples[~mask_in_train].to(triples.dtype)
+
+    # is_training = (triples[:, None, :] == train[None, :, :]).all(dim=2).any(dim=1)
+    # triples = triples[~is_training]
 
     return triples.cuda()

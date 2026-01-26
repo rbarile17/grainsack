@@ -284,8 +284,8 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
 
     explanations, times = run_explain(predictions, kg, kge_model, kge_config, lpx_config, factory)
 
-    if method != "mhs_explain":
-        predictions = [kg.label_triple(torch.tensor(p)) for p in predictions]
+    if lpx_config["method"] != "mhs_explain":
+        predictions = [kg.label_triple(torch.tensor(kg.id_triple(p))) for p in predictions]
         explanations = [kg.label_triples(e) for e in explanations]
     output = [{"prediction": predictions[i], "explanation": explanations[i], "time": times[i]} for i in range(len(predictions))]
     write_json(output, output_path)

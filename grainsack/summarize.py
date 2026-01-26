@@ -8,22 +8,25 @@ def simulation_summary(kg, triples):
     """Compute the simulation of a (sub-)graph"""
     partition = kg.get_partition(triples)
 
-    n_classes = len(partition)
     subjects = triples[:, 0]
+    predicates = triples[:, 1]
     objects = triples[:, 2]
 
-    subject_masks = [torch.isin(subjects, cl) for cl in partition]
-    object_masks = [torch.isin(objects, cl) for cl in partition]
-    pairs = [(i, j) for i in range(n_classes) for j in range(n_classes)]
+    max_ent = torch.max(torch.stack([subjects.max(), objects.max()])).item()
+    entity2class = torch.full((max_ent + 1,), -1, dtype=torch.int32).cuda()
 
-    quotient_triples = []
-    for i, j in pairs:
-        predicates = torch.unique(triples[subject_masks[i] & object_masks[j]][:, 1])
-        quotient_triples.extend([(i, p, j) for p in predicates])
+    for cid, ents in enumerate(partition):
+        entity2class[ents] = cid
 
-    quotient_triples = torch.tensor(quotient_triples, dtype=torch.long)
+    cs = entity2class[subjects].to(torch.int64)
+    co = entity2class[objects].to(torch.int64)
 
-    return quotient_triples, partition
+    valid = (cs >= 0) & (co >= 0)
+
+    q = torch.stack([cs[valid], predicates[valid], co[valid]], dim=1)
+    q = torch.unique(q, dim=0)
+
+    return q, partition
 
 
 def preprocess(multigraph):
