@@ -27,7 +27,7 @@ def fitness(nx_kg, prediction, triple):
         return 1e6
 
 
-def topology_sift(kg, prediction, triples, k: int = 20):
+def topology_sift(kg, prediction, triples, k: int = 5):
     """Get the KG triples featuring the subject of the prediction and having the highest fitness."""
     return torch.vstack(sorted(triples, key=lambda x: fitness(kg.nx_graph, prediction, x))[:k])
 
@@ -39,20 +39,45 @@ def get_statements(kg, prediction):
 
 
 def hypothesis(kg, summary, partition, prediction):
-    qe = next(i for i, t in enumerate(partition) if (t == prediction[0]).any())
+    e = prediction[0].cpu()
+    summary = summary.cpu()
+    partition = [p.cpu() for p in partition]
 
-    qtriples = summary[(summary[:, 0] == qe) | (summary[:, 2] == qe)]
-    qtriples = [(partition[qs], p, partition[qo]) for qs, p, qo in qtriples]
+    qe = next(i for i, t in enumerate(partition) if (t == e).any())
 
-    triples = []
-    for qs, p, qo in qtriples:
-        if prediction[0] in qs:
-            triples.extend([torch.tensor((prediction[0], p, o)).cuda() for o in qo])
-        elif prediction[0] in qo:
-            triples.extend([torch.tensor((s, p, prediction[0])).cuda() for s in qs])
-    triples = [t for t in triples if (prediction != t).any()]
-    triples = [t for t in triples if not (kg.training_triples == t).all(dim=1).any()]
+    rows_sub = summary[summary[:, 0] == qe]
+    rows_obj = summary[summary[:, 2] == qe]
 
-    triples = torch.stack(triples, dim=0).cuda()
+    blocks = []
 
-    return triples
+    for _, p, qo in rows_sub.tolist():
+        o = partition[qo]
+        n = o.numel()
+        if n == 0:
+            continue
+        block = torch.empty((n, 3), dtype=prediction.dtype).cpu()
+        block[:, 0] = e
+        block[:, 1] = p
+        block[:, 2] = o
+        blocks.append(block)
+
+    for qs, p, _ in rows_obj.tolist():
+        s = partition[qs]
+        n = s.numel()
+        if n == 0:
+            continue
+        block = torch.empty((n, 3), dtype=prediction.dtype).cpu()
+        block[:, 0] = s
+        block[:, 1] = p
+        block[:, 2] = e
+        blocks.append(block)
+
+    triples = torch.cat(blocks, dim=0)
+
+    triples = triples[(triples != prediction.cpu()).any(dim=1)]
+
+    train = kg.training_triples.to(triples.device)
+    is_training = (triples[:, None, :] == train[None, :, :]).all(dim=2).any(dim=1)
+    triples = triples[~is_training]
+
+    return triples.cuda()

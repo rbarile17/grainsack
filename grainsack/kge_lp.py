@@ -282,3 +282,12 @@ def train_kge_model(kge_model, triples, **kge_config):
         negative_sampler=negative_sampler,
     )
     trainer.train(triples_factory=training_triples, **kge_config["training_kwargs"], use_tqdm=False)
+
+
+def complex_cosine_similarity(x, y, dim=-1, eps=1e-8):
+    numerator = torch.sum(torch.conj(x) * y, dim=dim).real
+
+    x_norm = torch.sqrt(torch.sum(torch.abs(x) ** 2, dim=dim))
+    y_norm = torch.sqrt(torch.sum(torch.abs(y) ** 2, dim=dim))
+
+    return numerator / (x_norm * y_norm + eps)

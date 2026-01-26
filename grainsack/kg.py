@@ -36,11 +36,11 @@ class KG:
         self.id_to_entity: Dict = {v: k for k, v in self._kg.entity_to_id.items()}
         self.id_to_relation: Dict = {v: k for k, v in self._kg.relation_to_id.items()}
 
-        rdf_kg = Graph()
-        rdf_kg.parse(KGS_PATH / self.name / "abox/splits/train.nt")
+        self.rdf_kg = Graph()
+        self.rdf_kg.parse(KGS_PATH / self.name / "kg.owl")
 
         entity_types = defaultdict(list)
-        for s, _, o in rdf_kg.triples((None, RDF.type, None)):
+        for s, _, o in self.rdf_kg.triples((None, RDF.type, None)):
             entity_types[str(s)].append(str(o))
 
         self.entity_types = pd.DataFrame(
@@ -178,6 +178,6 @@ class KG:
         entity_types = self.entity_types[self.entity_types.entity.isin(nodes)]
         partition = entity_types.groupby("classes_str")["entity"].apply(list)
         partition = partition.to_dict()
-        partition = [torch.tensor(p).cuda() for p in partition.values()]
+        partition = [torch.tensor(p, dtype=torch.long).cuda() for p in partition.values()]
 
         return partition

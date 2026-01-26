@@ -16,7 +16,7 @@ from .summarize import bisimulation_summary, simulation_summary
 from .utils import load_kge_model
 
 
-def run_explain(predictions, kg, kge_model_path, kge_config, lpx_config, build_explainer):
+def run_explain(predictions, kg, kge_model, kge_config, lpx_config, build_explainer):
     """Compute the explanations for the given predictions based on the given data, models, and config.
 
     Compute the explanations for the given KG (predictions) using the statements in the other given KG,
@@ -36,8 +36,7 @@ def run_explain(predictions, kg, kge_model_path, kge_config, lpx_config, build_e
     :return: The list of explanations each as a tensor of triples.
     :rtype: list
     """
-
-    explain_partial = build_explainer(kg, kge_model_path, kge_config, lpx_config)
+    explain_partial = build_explainer(kg, kge_model, kge_config, lpx_config)
 
     explanations = []
     times = []
@@ -52,16 +51,11 @@ def run_explain(predictions, kg, kge_model_path, kge_config, lpx_config, build_e
     return explanations, times
 
 
-def build_combinatorial_optimization_explainer(kg, kge_model_path, kge_config, lpx_config):
+def build_combinatorial_optimization_explainer(kg, kge_model, kge_config, lpx_config):
     """Function factory building the explanation method from the explanation config."""
 
     method = lpx_config["method"]
     summarization = lpx_config["summarization"]
-
-    print(f"Loading KGE model...")
-    kge_model = load_kge_model(kge_model_path, kge_config, kg)
-    kge_model.eval()
-    kge_model.cuda()
 
     operation = None
 
@@ -111,6 +105,7 @@ def build_combinatorial_optimization_explainer(kg, kge_model_path, kge_config, l
 
     explain_partial = partial(
         run_combinatorial_optimization,
+        kg,
         relevance_partial,
         get_statements_partial,
         sift_partial,
@@ -123,7 +118,7 @@ def build_combinatorial_optimization_explainer(kg, kge_model_path, kge_config, l
 
 
 def run_combinatorial_optimization(
-    relevance, get_statements, sift, summarize, prediction, max_length=2, kelpie=True, operation=None
+    kg, relevance, get_statements, sift, summarize, prediction, max_length=2, kelpie=True, operation=None
 ):
     """Explain the prediction via combinatorial optimization.
 
@@ -135,6 +130,7 @@ def run_combinatorial_optimization(
     :type prediction: torch.Tensor
     :param max_explanation_length: the maximum number of statements in the explanation.
     """
+    prediction = kg.id_triple(prediction)
     prediction = torch.tensor(prediction).cuda()
 
     original_statements = get_statements(prediction)

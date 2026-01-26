@@ -18,6 +18,7 @@ from grainsack.kg import KG
 from grainsack.kge_lp import MODEL_REGISTRY
 from grainsack.utils import load_kge_model, read_json, write_json
 from grainsack.workflow import Comparison, Validation
+from grainsack.mhs_explain import mhs_explain, mhs_explain_factory
 
 
 def set_seeds(seed):
@@ -264,19 +265,28 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
 
     lpx_config = json.loads(lpx_config)
 
+    if lpx_config["method"] == "mhs_explain":
+        factory = mhs_explain_factory
+    else:
+        factory = build_combinatorial_optimization_explainer
+
     kge_config = read_json(kge_config_path)
 
     kg = KG(kg=kg_name, create_inverse_triples=kge_config["model"] == "ConvE")
 
+    print(f"Loading KGE model...")
+    kge_model = load_kge_model(kge_model_path, kge_config, kg)
+    kge_model.eval()
+    kge_model.cuda()
+
     with open(predictions_path, "r", encoding="utf-8") as predictions:
         predictions = [x.strip().split("\t") for x in predictions.readlines()]
-    predictions = kg.id_triples(predictions)
 
-    factory = globals().get(factory_name)
-    explanations, times = run_explain(predictions, kg, kge_model_path, kge_config, lpx_config, factory)
+    explanations, times = run_explain(predictions, kg, kge_model, kge_config, lpx_config, factory)
 
-    predictions = [kg.label_triple(torch.tensor(p)) for p in predictions]
-    explanations = [kg.label_triples(e) for e in explanations]
+    if method != "mhs_explain":
+        predictions = [kg.label_triple(torch.tensor(p)) for p in predictions]
+        explanations = [kg.label_triples(e) for e in explanations]
     output = [{"prediction": predictions[i], "explanation": explanations[i], "time": times[i]} for i in range(len(predictions))]
     write_json(output, output_path)
 
