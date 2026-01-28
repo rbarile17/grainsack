@@ -1,7 +1,6 @@
 """Implementation of the KG class."""
 
 from collections import defaultdict
-from time import strftime
 from typing import Dict
 
 import networkx as nx
@@ -11,7 +10,7 @@ from pykeen.datasets import get_dataset
 from pykeen.triples.triples_factory import TriplesFactory
 from rdflib import RDF, Graph
 
-from . import KGS_PATH
+from . import KGS_PATH, logger
 
 
 class KG:
@@ -45,21 +44,21 @@ class KG:
         test = KGS_PATH / self.name / "abox/splits/test.tsv"
         valid = KGS_PATH / self.name / "abox/splits/valid.tsv"
 
-        print(f"Loading tsv dataset", strftime("%H:%M:%S"))
+        logger.info("Loading tsv dataset")
 
         dataset_kwargs = {"create_inverse_triples": create_inverse_triples}
         self._kg = get_dataset(training=train, testing=test, validation=valid, dataset_kwargs=dataset_kwargs)
 
-        print("Building ID mappings", strftime("%H:%M:%S"))
+        logger.info("Building ID mappings")
 
         self.id_to_entity: Dict = {v: k for k, v in self._kg.entity_to_id.items()}
         self.id_to_relation: Dict = {v: k for k, v in self._kg.relation_to_id.items()}
 
-        print(f"Parsing RDF KG for {self.name}", strftime("%H:%M:%S"))
+        logger.info(f"Parsing RDF KG for {self.name}")
         self.rdf_kg = Graph()
         self.rdf_kg.parse(KGS_PATH / self.name / "kg.owl")
 
-        print(f"Extracting entity types for {self.name}", strftime("%H:%M:%S"))
+        logger.info(f"Extracting entity types for {self.name}")
 
         entity_types = defaultdict(list)
         for s, _, o in self.rdf_kg.triples((None, RDF.type, None)):

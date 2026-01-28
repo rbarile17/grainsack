@@ -16,6 +16,7 @@ from grainsack import (
     METRICS_PATH,
     PREDICTIONS_PATH,
     SELECTED_PREDICTIONS_PATH,
+    logger,
 )
 from grainsack.utils import read_json, write_json
 
@@ -107,37 +108,41 @@ def run_kubernetes(script, params_dict):
     import yaml
     import os
     
-    # Generate unique job name
     job_name = f"{script}-{hash_json_string(json.dumps(params_dict, sort_keys=True))}"
     
-    # Read the template
     template_path = f"kubernetes/{script}.yml"
     with open(template_path, 'r') as f:
         job_spec = yaml.safe_load(f)
     
-    # Update job spec with parameters
     job_spec['metadata']['name'] = job_name
     
-    # Update command with parameters
     container = job_spec['spec']['template']['spec']['containers'][0]
     cmd_args = []
+    log_path = None
     for key, value in params_dict.items():
-        cmd_args.extend([f"--{key}", str(value)])
+        if key == 'log_path':
+            log_path = str(value)
+        else:
+            cmd_args.extend([f"--{key}", str(value)])
     
-    # Replace the command arguments
-    container['command'] = ["python", "-u", "-m", f"grainsack.operations", script] + cmd_args
+    # Build command with shell redirection for log
+    python_cmd = f"python -u -m grainsack.operations {script}"
+    for i in range(0, len(cmd_args), 2):
+        python_cmd += f" {cmd_args[i]} {cmd_args[i+1]}"
     
-    # Write to temporary file
+    if log_path:
+        python_cmd += f" > {log_path} 2>&1"
+    
+    container['command'] = ["/bin/bash", "-c", python_cmd]
+    
     with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
         yaml.dump(job_spec, f)
         temp_file = f.name
     
     try:
-        # Create the job
         create_cmd = ["kubectl", "create", "-f", temp_file]
         subprocess.run(create_cmd, check=True)
         
-        # Monitor the job
         while True:
             status_cmd = ["kubectl", "get", "job", job_name, "-o", "jsonpath={.status.conditions[?(@.type=='Complete')].status}"]
             try:
@@ -151,6 +156,8 @@ def run_kubernetes(script, params_dict):
             except subprocess.CalledProcessError:
                 failed_status = ""
             
+            logger.info(f"Job {job_name} status - Complete: {complete_status}, Failed: {failed_status}")
+
             if complete_status == "True":
                 break
             if failed_status == "True":
@@ -158,7 +165,6 @@ def run_kubernetes(script, params_dict):
             
             time.sleep(10)
     finally:
-        # Clean up temporary file
         if os.path.exists(temp_file):
             os.remove(temp_file)
 
@@ -205,13 +211,17 @@ class BaseTask(luigi.Task):
     def kubernetes_params_as_dict(self):
         """Convert parameters to Kubernetes-compatible dictionary.
         
-        Converts all Path objects to strings for YAML serialization. Override
-        if additional parameter transformations are needed.
+        Converts all Path objects to strings for YAML serialization. 
+        Automatically includes log_path if the task has it defined.
+        Override if additional parameter transformations are needed.
         
         Returns:
             dict: Parameters with Path objects converted to strings.
         """
-        return {k: str(v) for k, v in self.params_as_dict().items()}
+        params = {k: str(v) for k, v in self.params_as_dict().items()}
+        if hasattr(self, 'log_path'):
+            params['log_path'] = str(self.log_path)
+        return params
     
     def run_with_executor(self, script_name):
         """Execute task using the appropriate backend executor.

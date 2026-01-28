@@ -3,7 +3,7 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, pipeline
 
-from grainsack import KGS_PATH
+from grainsack import KGS_PATH, logger
 from grainsack.utils import read_json
 
 SYSTEM_PROMPT = """
@@ -102,7 +102,7 @@ def run_evaluate(explanations, kg_name, ranking, kg, kge_model):
             for i in range(len(predictions))
         ]
 
-    print("Running pre-explanation simulations...")
+    logger.info("Running pre-explanation simulations...")
     prompts = [
         format_prompt(explanations[i], ranking=rankings[i] if ranking else None)
         for i in range(len(predictions))
@@ -110,7 +110,7 @@ def run_evaluate(explanations, kg_name, ranking, kg, kge_model):
     simulations = pipe(prompts, max_new_tokens=64, use_cache=True, batch_size=8)
     simulations = [simulation[0]["generated_text"][-1]["content"] for simulation in simulations]
 
-    print("Running post-explanation simulations...")
+    logger.info("Running post-explanation simulations...")
     prompts = [
         format_prompt(explanations[i], include_explanation=True, ranking=rankings[i] if ranking else None)
         for i in range(len(predictions))

@@ -7,7 +7,7 @@ from itertools import combinations
 
 import torch
 
-from . import CRIAGE, DATA_POISONING, IMAGINE, KELPIE, SIMULATION
+from . import CRIAGE, DATA_POISONING, IMAGINE, KELPIE, SIMULATION, logger
 from .relevance import criage_relevance, dp_relevance, estimate_rank_variation
 from .sift import criage_sift, get_statements, hypothesis, topology_sift
 from .summarize import simulation_summary
@@ -41,7 +41,7 @@ def run_explain(predictions, kg, kge_model, kge_config, lpx_config, build_explai
     explanations = []
     times = []
     for i, prediction in enumerate(predictions):
-        print(f"Explaining prediction {i+1}/{len(predictions)}")
+        logger.info(f"Explaining prediction {i+1}/{len(predictions)}")
         start_time = time.perf_counter()
         explanation = explain_partial(prediction)
         end_time = time.perf_counter()
@@ -173,25 +173,25 @@ def run_combinatorial_optimization(
             or [[]] if no explanation is found or an error occurs.
     """
     try:
-        print("Explaining prediction:", prediction)
+        logger.info(f"Explaining prediction: {prediction}")
         prediction = kg.id_triple(prediction)
         prediction = torch.tensor(prediction).cuda()
 
-        print("Getting statements...", time.strftime("%H:%M:%S"))
+        logger.info("Getting statements")
 
         original_statements = get_statements(prediction)
         original_statements = sift(prediction, original_statements)
 
-        print("Summarizing statements...", time.strftime("%H:%M:%S"))
+        logger.info("Summarizing statements")
         statements, partition = summarize(original_statements)
         statements = statements.unsqueeze(1)
 
         if statements.size(0) == 0:
-            print("No statements found.")
+            logger.warning("No statements found")
             return [[]]
 
         for length in range(1, min(statements.size(0), max_length) + 1):
-            print(f"Evaluating combinations of length {length}...", time.strftime("%H:%M:%S"))
+            logger.info(f"Evaluating combinations of length {length}")
             idx = torch.tensor(list(combinations(range(statements.size(0)), length)))
             combos = statements[idx].squeeze(2)
             if kelpie:
@@ -213,5 +213,5 @@ def run_combinatorial_optimization(
 
         return [mapped_statement]
     except Exception as e:
-        print(f"An error occurred during explanation: {e}")
+        logger.error(f"An error occurred during explanation: {e}")
         return [[]]

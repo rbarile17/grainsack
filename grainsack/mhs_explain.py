@@ -4,13 +4,14 @@ import os
 import subprocess
 import uuid
 from functools import partial
-from time import strftime, time
+from time import time
 
 import torch
 from rdflib import BNode, Graph, URIRef
 from rdflib.namespace import OWL, RDF, RDFS
 from tqdm import tqdm
 
+from grainsack import logger
 from grainsack.kge_lp import complex_cosine_similarity
 
 
@@ -84,7 +85,7 @@ def consistent(kg, addition):
     output = result.stdout
     end_reasoning = time()
 
-    print(f"Serialization: {end_serialization - start_serialization:.2f}s, Reasoning: {end_reasoning - start_reasoning:.2f}s")
+    logger.debug(f"Serialization: {end_serialization - start_serialization:.2f}s, Reasoning: {end_reasoning - start_reasoning:.2f}s")
 
     os.remove(temp_file_xml)
 
@@ -178,7 +179,7 @@ def find_min_conflict(r, a, k, u):
 
 
 def find_min_conflict_(r, a, k, u):
-    print(len(r), len(a))
+    logger.debug(f"find_min_conflict_: r={len(r)}, a={len(a)}")
 
     if r and consistent(k, u - r):
         return set()
@@ -218,7 +219,7 @@ def get_solutions(kg, not_observation, abducibles, max_depth=2):
     while pq:
         depth, _, path = heapq.heappop(pq)
 
-        print(f"[MHS] Exploring node {path} | depth={depth} | path_size={len(path)}")
+        logger.debug(f"[MHS] Exploring node {path} | depth={depth} | path_size={len(path)}")
 
         if depth > max_depth:
             break
@@ -242,10 +243,10 @@ def get_solutions(kg, not_observation, abducibles, max_depth=2):
                 conflict = c
                 break
         if conflict is None:
-            print("[MHS] Computing new conflict...")
+            logger.info("[MHS] Computing new conflict")
             conflict = find_min_conflict(set(), abducibles - path, kg | not_observation | path, abducibles)
             conflicts.append(conflict)
-            print(f"[MHS] New conflict of size {len(conflict)}: {conflict}")
+            logger.info(f"[MHS] New conflict of size {len(conflict)}")
 
         for e in conflict:
             push_path(path | {e})
@@ -291,7 +292,7 @@ def get_justification(kg, addition):
         os.remove(inconsistency_file_name)
     except FileNotFoundError as e:
         explanation = "No justification found."
-        print("Justification file not found:", e)
+        logger.warning(f"Justification file not found: {e}")
 
     os.remove(temp_file_xml)
 
@@ -300,27 +301,22 @@ def get_justification(kg, addition):
 
 def mhs_explain(kg, kge_model, prediction, k=5):
     prediction = (URIRef(prediction[0]), URIRef(prediction[1]), URIRef(prediction[2]))
-    print("Getting abducibles...", strftime("%H:%M:%S"))
+    logger.info("Getting abducibles")
     abducibles = get_abducibles(kg, prediction, kge_model, k) - {prediction}
-    print(f"Number of abducibles: {len(abducibles)}", strftime("%H:%M:%S"))
+    logger.info(f"Number of abducibles: {len(abducibles)}")
     kg = set(kg.rdf_kg.triples((None, None, None)))
     not_observation = negate_assertion(*prediction)
 
-    print("Searching for solution...", strftime("%H:%M:%S"))
+    logger.info("Searching for solution")
     solution = get_solutions(kg, not_observation, abducibles)
 
     if solution is None:
         return [[]]
 
-    print(f"Solution found with {len(solution)} assertions.", strftime("%H:%M:%S"))
+    logger.info(f"Solution found with {len(solution)} assertions")
 
-    print("Getting justification...", strftime("%H:%M:%S"))
+    logger.info("Getting justification")
     justification = get_justification(kg, solution | not_observation)
-    print("Justification obtained.", strftime("%H:%M:%S"))
-
-    print("\n\n\n\n****JUSTIFICATION****")
-    print(justification)
-    print("\n\n\n\n****END JUSTIFICATION****")
-
+    logger.info("Justification obtained")
 
     return [justification]

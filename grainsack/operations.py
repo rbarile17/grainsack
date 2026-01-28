@@ -22,7 +22,7 @@ from pykeen.evaluation import RankBasedEvaluator
 from pykeen.hpo import hpo_pipeline
 from pykeen.pipeline import pipeline
 
-from grainsack import EXPERIMENTS_PATH
+from grainsack import logger
 from grainsack.evaluate import run_evaluate
 from grainsack.explain import build_combinatorial_optimization_explainer, run_explain
 from grainsack.kg import KG
@@ -69,8 +69,8 @@ def cli():
 def tune(kg_name, kge_model_name, output_path):
     """Hyperparameter optimization for KGE models."""
     set_seeds(42)
-
-    print(EXPERIMENTS_PATH)
+    
+    logger.info(f"Starting hyperparameter tuning for {kge_model_name} on {kg_name}")
 
     kg = KG(kg_name, create_inverse_triples=kge_model_name == "ConvE")
 
@@ -99,6 +99,7 @@ def tune(kg_name, kge_model_name, output_path):
     config.pop("testing")
 
     write_json(config, output_path)
+    logger.info(f"Hyperparameter tuning completed. Config saved to {output_path}")
 
 
 @cli.command(
@@ -110,6 +111,8 @@ def tune(kg_name, kge_model_name, output_path):
 def train(kg_name, kge_config_path, output_path):
     """Train KGE model with early stopping."""
     set_seeds(42)
+    
+    logger.info(f"Starting training for {kg_name}")
 
     config = read_json(kge_config_path)
     kg = KG(kg_name, create_inverse_triples=config["model"] == "ConvE")
@@ -127,6 +130,7 @@ def train(kg_name, kge_config_path, output_path):
     write_json(config, kge_config_path)
 
     torch.save(result.model.state_dict(), output_path)
+    logger.info(f"Training completed. Model saved to {output_path}")
 
 
 @cli.command(
@@ -139,6 +143,8 @@ def train(kg_name, kge_config_path, output_path):
 def rank(kg_name, kge_model_path, kge_config_path, output_path):
     """Rank test triples using trained KGE model (filtered setting)."""
     set_seeds(42)
+    
+    logger.info(f"Starting ranking for {kg_name}")
 
     kge_config = read_json(kge_config_path)
 
@@ -158,6 +164,7 @@ def rank(kg_name, kge_model_path, kge_config_path, output_path):
     output = np.concatenate((kg.testing.triples, ranks.reshape(-1, 1)), axis=1)
     output = pd.DataFrame(output, columns=["s", "p", "o", "rank"])
     output.to_csv(output_path, index=False, sep=";")
+    logger.info(f"Ranking completed. Predictions saved to {output_path}")
 
 
 @cli.command(help="Sample top-ranked predictions (rank=1) for explanation experiments.")
@@ -167,6 +174,8 @@ def rank(kg_name, kge_model_path, kge_config_path, output_path):
 )
 def select_predictions(predictions_path, output_path):
     """Sample top-ranked predictions (rank=1) for explanation."""
+    logger.info(f"Selecting top predictions from {predictions_path}")
+    
     predictions = pd.read_csv(predictions_path, sep=";")
 
     predictions = predictions[predictions["rank"] == 1]
@@ -177,6 +186,7 @@ def select_predictions(predictions_path, output_path):
     predictions = predictions.reset_index(drop=True)
 
     predictions.to_csv(output_path, sep="\t", index=False, header=False)
+    logger.info(f"Selected {sample_size} predictions and saved to {output_path}")
 
 
 @cli.command(
@@ -214,12 +224,12 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
 
     kg = KG(kg=kg_name, create_inverse_triples=kge_config["model"] == "ConvE")
 
-    print(f"Loading KGE model...")
+    logger.info("Loading KGE model...")
     kge_model = load_kge_model(kge_model_path, kge_config, kg)
     kge_model.eval()
     kge_model.cuda()
 
-    print(f"Reading predictions")
+    logger.info("Reading predictions")
     with open(predictions_path, "r", encoding="utf-8") as predictions:
         predictions = [x.strip().split("\t") for x in predictions.readlines()]
 
@@ -230,6 +240,7 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
         explanations = [kg.label_triples(e) for e in explanations]
     output = [{"prediction": predictions[i], "explanation": explanations[i], "time": times[i]} for i in range(len(predictions))]
     write_json(output, output_path)
+    logger.info(f"Explanation completed. Results saved to {output_path}")
 
 
 @cli.command(
@@ -252,6 +263,8 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
 def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, output_path):
     """Evaluate explanations using LP-DIXIT protocol."""
     set_seeds(42)
+    
+    logger.info(f"Starting evaluation for {kg_name}")
 
     explanations = read_json(explanations_path)
 
@@ -259,7 +272,7 @@ def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, output
 
     kg = KG(kg=kg_name, create_inverse_triples=kge_config["model"] == "ConvE")
 
-    print(f"Loading KGE model...")
+    logger.info("Loading KGE model...")
     kge_model = load_kge_model(kge_model_path, kge_config, kg)
     kge_model.eval()
     kge_model.cuda()
@@ -267,6 +280,7 @@ def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, output
     evaluations = run_evaluate(explanations, kg_name, True, kg, kge_model)
 
     write_json(evaluations, output_path)
+    logger.info(f"Evaluation completed. Results saved to {output_path}")
 
 
 @cli.command()
