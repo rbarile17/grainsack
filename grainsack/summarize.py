@@ -2,6 +2,7 @@
 
 import torch
 
+
 def simulation_summary(kg, triples):
     """Compute the simulation of a (sub-)graph"""
     partition = kg.get_partition(triples)

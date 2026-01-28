@@ -15,11 +15,11 @@ from . import KGS_PATH, logger
 
 class KG:
     """Knowledge graph representation with entity/relation mappings and utilities.
-    
+
     Loads a knowledge graph from TSV split files, creates ID mappings, parses
     the RDF representation, extracts entity types, and builds a NetworkX graph
     for topology-based operations.
-    
+
     Attributes:
         name (str): Name of the knowledge graph.
         id_to_entity (dict): Mapping from entity IDs to entity URIs.
@@ -31,7 +31,7 @@ class KG:
 
     def __init__(self, kg: str, create_inverse_triples=False) -> None:
         """Initialize and load a knowledge graph.
-        
+
         Args:
             kg (str): Name of the knowledge graph (directory name in kgs directory).
             create_inverse_triples (bool, optional): Whether to create inverse
@@ -47,12 +47,15 @@ class KG:
         logger.info("Loading tsv dataset")
 
         dataset_kwargs = {"create_inverse_triples": create_inverse_triples}
-        self._kg = get_dataset(training=train, testing=test, validation=valid, dataset_kwargs=dataset_kwargs)
+        self._kg = get_dataset(training=train, testing=test,
+                               validation=valid, dataset_kwargs=dataset_kwargs)
 
         logger.info("Building ID mappings")
 
-        self.id_to_entity: Dict = {v: k for k, v in self._kg.entity_to_id.items()}
-        self.id_to_relation: Dict = {v: k for k, v in self._kg.relation_to_id.items()}
+        self.id_to_entity: Dict = {v: k for k,
+                                   v in self._kg.entity_to_id.items()}
+        self.id_to_relation: Dict = {v: k for k,
+                                     v in self._kg.relation_to_id.items()}
 
         logger.info(f"Parsing RDF KG for {self.name}")
         self.rdf_kg = Graph()
@@ -67,16 +70,18 @@ class KG:
         self.entity_types = pd.DataFrame(
             [(e, "; ".join(classes)) for e, classes in entity_types.items()], columns=["entity", "classes_str"]
         )
-        self.entity_types["entity"] = self.entity_types["entity"].map(self.entity_to_id.get)
+        self.entity_types["entity"] = self.entity_types["entity"].map(
+            self.entity_to_id.get)
 
         self.nx_graph = nx.MultiGraph()
         self.nx_graph.add_nodes_from(list(self.id_to_entity.keys()))
-        self.nx_graph.add_edges_from([(h.item(), t.item()) for h, _, t in self.training_triples])
+        self.nx_graph.add_edges_from(
+            [(h.item(), t.item()) for h, _, t in self.training_triples])
 
     @property
     def training(self) -> TriplesFactory:
         """Get the training triples factory.
-        
+
         Returns:
             TriplesFactory: PyKEEN triples factory for training data.
         """
@@ -85,7 +90,7 @@ class KG:
     @property
     def training_triples(self) -> torch.Tensor:
         """Get the training triples as a GPU tensor.
-        
+
         Returns:
             torch.Tensor: Training triples with integer IDs, shape (N, 3), on CUDA.
         """
@@ -94,7 +99,7 @@ class KG:
     @property
     def validation(self) -> TriplesFactory:
         """Get the validation triples factory.
-        
+
         Returns:
             TriplesFactory: PyKEEN triples factory for validation data.
         """
@@ -103,7 +108,7 @@ class KG:
     @property
     def validation_triples(self) -> torch.Tensor:
         """Get the validation triples as a GPU tensor.
-        
+
         Returns:
             torch.Tensor: Validation triples with integer IDs, shape (N, 3), on CUDA.
         """
@@ -112,7 +117,7 @@ class KG:
     @property
     def testing(self) -> TriplesFactory:
         """Get the testing triples factory.
-        
+
         Returns:
             TriplesFactory: PyKEEN triples factory for test data.
         """
@@ -200,10 +205,12 @@ class KG:
         :param triples: The triples to partition.
         :return: The partition of the knowledge graph.
         """
-        nodes = set([s.item() for s, _, _ in triples] + [o.item() for _, _, o in triples])
+        nodes = set([s.item() for s, _, _ in triples] + [o.item()
+                    for _, _, o in triples])
         entity_types = self.entity_types[self.entity_types.entity.isin(nodes)]
         partition = entity_types.groupby("classes_str")["entity"].apply(list)
         partition = partition.to_dict()
-        partition = [torch.tensor(p, dtype=torch.long).cuda() for p in partition.values()]
+        partition = [torch.tensor(p, dtype=torch.long).cuda()
+                     for p in partition.values()]
 
         return partition

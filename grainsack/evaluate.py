@@ -50,14 +50,17 @@ def run_evaluate(explanations, kg_name, ranking, kg, kge_model):
         if include_explanation:
             explanation = explained_prediction["explanation"]
             explanation = [
-                (ind_labels.get(s, s.split("/")[-1]), prop_labels[p], ind_labels.get(o, o.split("/")[-1]))
+                (ind_labels.get(s, s.split("/")
+                 [-1]), prop_labels[p], ind_labels.get(o, o.split("/")[-1]))
                 for (s, p, o) in explanation
             ]
-            explanation = [f'("{s}", {p}, "{o}")\n' for (s, p, o) in explanation]
+            explanation = [f'("{s}", {p}, "{o}")\n' for (
+                s, p, o) in explanation]
             explanation = "\n".join(explanation)
             explanation = f"{EXPLANATION_HOOK}\n{explanation}"
 
-        query = {"subject": subject, "predicate": predicate, "explanation": explanation}
+        query = {"subject": subject, "predicate": predicate,
+                 "explanation": explanation}
         user_prompt = USER_PROMPT.format(**query)
 
         system_prompt = SYSTEM_PROMPT.format(
@@ -68,7 +71,8 @@ def run_evaluate(explanations, kg_name, ranking, kg, kge_model):
             )
         )
 
-        prompt = [{"role": "system", "content": system_prompt}] + [{"role": "user", "content": user_prompt}]
+        prompt = [{"role": "system", "content": system_prompt}] + \
+            [{"role": "user", "content": user_prompt}]
 
         return prompt
 
@@ -76,8 +80,10 @@ def run_evaluate(explanations, kg_name, ranking, kg, kge_model):
     prop_labels = read_json(KGS_PATH / kg_name / "prop_labels.json")
 
     llm_id = "Meta-Llama-3.1-70B-Instruct"
-    quantization_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16)
-    llm = AutoModelForCausalLM.from_pretrained(llm_id, quantization_config=quantization_config, device_map="auto")
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16)
+    llm = AutoModelForCausalLM.from_pretrained(
+        llm_id, quantization_config=quantization_config, device_map="auto")
     tokenizer = AutoTokenizer.from_pretrained(llm_id, padding_side="left")
 
     pipe = pipeline(
@@ -96,7 +102,8 @@ def run_evaluate(explanations, kg_name, ranking, kg, kge_model):
         rankings = torch.argsort(object_scores, dim=1, descending=True)
         rankings = [
             "||||".join([
-                ind_labels.get(kg.id_to_entity[ranking.item()], kg.id_to_entity[ranking.item()].split("/")[-1])
+                ind_labels.get(kg.id_to_entity[ranking.item(
+                )], kg.id_to_entity[ranking.item()].split("/")[-1])
                 for ranking in rankings[i][:20]
             ])
             for i in range(len(predictions))
@@ -104,24 +111,33 @@ def run_evaluate(explanations, kg_name, ranking, kg, kge_model):
 
     logger.info("Running pre-explanation simulations...")
     prompts = [
-        format_prompt(explanations[i], ranking=rankings[i] if ranking else None)
+        format_prompt(explanations[i],
+                      ranking=rankings[i] if ranking else None)
         for i in range(len(predictions))
     ]
-    simulations = pipe(prompts, max_new_tokens=64, use_cache=True, batch_size=8)
-    simulations = [simulation[0]["generated_text"][-1]["content"] for simulation in simulations]
+    simulations = pipe(prompts, max_new_tokens=64,
+                       use_cache=True, batch_size=8)
+    simulations = [simulation[0]["generated_text"][-1]["content"]
+                   for simulation in simulations]
 
     logger.info("Running post-explanation simulations...")
     prompts = [
-        format_prompt(explanations[i], include_explanation=True, ranking=rankings[i] if ranking else None)
+        format_prompt(explanations[i], include_explanation=True,
+                      ranking=rankings[i] if ranking else None)
         for i in range(len(predictions))
     ]
-    post_exp_simulations = pipe(prompts, max_new_tokens=64, use_cache=True, batch_size=8)
-    post_exp_simulations = [simulation[0]["generated_text"][-1]["content"] for simulation in post_exp_simulations]
+    post_exp_simulations = pipe(
+        prompts, max_new_tokens=64, use_cache=True, batch_size=8)
+    post_exp_simulations = [simulation[0]["generated_text"]
+                            [-1]["content"] for simulation in post_exp_simulations]
 
-    predictability_pre = [1 if o == gt else 0 for o, gt in zip(simulations, gts)]
-    predictability_post = [1 if o == gt else 0 for o, gt in zip(post_exp_simulations, gts)]
+    predictability_pre = [1 if o == gt else 0 for o,
+                          gt in zip(simulations, gts)]
+    predictability_post = [1 if o == gt else 0 for o,
+                           gt in zip(post_exp_simulations, gts)]
 
-    explanation_labels = [post - pre for post, pre in zip(predictability_post, predictability_pre)]
+    explanation_labels = [post - pre for post,
+                          pre in zip(predictability_post, predictability_pre)]
 
     for i in range(len(explanations)):
         explanations[i]["simulation"] = simulations[i]

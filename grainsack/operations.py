@@ -39,10 +39,10 @@ HELP_OUTPUT_PATH = "Path where output file will be saved."
 
 def set_seeds(seed):
     """Set random seeds for reproducible results across libraries.
-    
+
     Configures random number generators for NumPy, PyTorch (CPU and CUDA),
     and Python's random module to ensure deterministic behavior.
-    
+
     Args:
         seed (int): Random seed value to use across all libraries.
     """
@@ -69,8 +69,9 @@ def cli():
 def tune(kg_name, kge_model_name, output_path):
     """Hyperparameter optimization for KGE models."""
     set_seeds(42)
-    
-    logger.info(f"Starting hyperparameter tuning for {kge_model_name} on {kg_name}")
+
+    logger.info(
+        f"Starting hyperparameter tuning for {kge_model_name} on {kg_name}")
 
     kg = KG(kg_name, create_inverse_triples=kge_model_name == "ConvE")
 
@@ -78,14 +79,15 @@ def tune(kg_name, kge_model_name, output_path):
     batch_size = MODEL_REGISTRY[kge_model_name]["batch_size"]
 
     config = hpo_pipeline(
-        timeout=8 * 60 * 60 if kge_model_name != "TransE" else 4 * 60 * 60, 
+        timeout=8 * 60 * 60 if kge_model_name != "TransE" else 4 * 60 * 60,
         training=kg.training,
         validation=kg.validation,
         testing=kg.testing,
         model=kge_model_name,
         training_kwargs={"num_epochs": num_epochs, "batch_size": batch_size},
         stopper="early",
-        stopper_kwargs={"frequency": 5, "patience": 2, "relative_delta": 0.002},
+        stopper_kwargs={"frequency": 5,
+                        "patience": 2, "relative_delta": 0.002},
         lr_scheduler="ExponentialLR",
         evaluation_kwargs={"batch_size": 16356},
     )
@@ -99,7 +101,8 @@ def tune(kg_name, kge_model_name, output_path):
     config.pop("testing")
 
     write_json(config, output_path)
-    logger.info(f"Hyperparameter tuning completed. Config saved to {output_path}")
+    logger.info(
+        f"Hyperparameter tuning completed. Config saved to {output_path}")
 
 
 @cli.command(
@@ -111,7 +114,7 @@ def tune(kg_name, kge_model_name, output_path):
 def train(kg_name, kge_config_path, output_path):
     """Train KGE model with early stopping."""
     set_seeds(42)
-    
+
     logger.info(f"Starting training for {kg_name}")
 
     config = read_json(kge_config_path)
@@ -123,7 +126,8 @@ def train(kg_name, kge_config_path, output_path):
         testing=kg.testing,
         validation=kg.validation,
         stopper="early",
-        stopper_kwargs={"frequency": 5, "patience": 2, "relative_delta": 0.002, "evaluation_batch_size": 16356},
+        stopper_kwargs={"frequency": 5, "patience": 2,
+                        "relative_delta": 0.002, "evaluation_batch_size": 16356},
     )
 
     config["training_kwargs"]["num_epochs"] = result.stopper.best_epoch
@@ -143,7 +147,7 @@ def train(kg_name, kge_config_path, output_path):
 def rank(kg_name, kge_model_path, kge_config_path, output_path):
     """Rank test triples using trained KGE model (filtered setting)."""
     set_seeds(42)
-    
+
     logger.info(f"Starting ranking for {kg_name}")
 
     kge_config = read_json(kge_config_path)
@@ -156,8 +160,10 @@ def rank(kg_name, kge_model_path, kge_config_path, output_path):
 
     evaluator = RankBasedEvaluator(clear_on_finalize=False)
     mapped_triples = kg.testing.mapped_triples.cuda()
-    filter_triples = [kg.training.mapped_triples.cuda(), kg.validation.mapped_triples.cuda()]
-    evaluator.evaluate(kge_model, mapped_triples, batch_size=16356, additional_filter_triples=filter_triples)
+    filter_triples = [kg.training.mapped_triples.cuda(
+    ), kg.validation.mapped_triples.cuda()]
+    evaluator.evaluate(kge_model, mapped_triples, batch_size=16356,
+                       additional_filter_triples=filter_triples)
 
     ranks = evaluator.ranks[("tail", "optimistic")]
     ranks = np.concatenate(ranks)
@@ -175,7 +181,7 @@ def rank(kg_name, kge_model_path, kge_config_path, output_path):
 def select_predictions(predictions_path, output_path):
     """Sample top-ranked predictions (rank=1) for explanation."""
     logger.info(f"Selecting top predictions from {predictions_path}")
-    
+
     predictions = pd.read_csv(predictions_path, sep=";")
 
     predictions = predictions[predictions["rank"] == 1]
@@ -186,7 +192,8 @@ def select_predictions(predictions_path, output_path):
     predictions = predictions.reset_index(drop=True)
 
     predictions.to_csv(output_path, sep="\t", index=False, header=False)
-    logger.info(f"Selected {sample_size} predictions and saved to {output_path}")
+    logger.info(
+        f"Selected {sample_size} predictions and saved to {output_path}")
 
 
 @cli.command(
@@ -218,7 +225,8 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
     set_seeds(42)
 
     lpx_config = json.loads(lpx_config)
-    factory = mhs_explain_factory if lpx_config["method"] == "mhs_explain" else build_combinatorial_optimization_explainer
+    factory = mhs_explain_factory if lpx_config[
+        "method"] == "mhs_explain" else build_combinatorial_optimization_explainer
 
     kge_config = read_json(kge_config_path)
 
@@ -233,12 +241,15 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
     with open(predictions_path, "r", encoding="utf-8") as predictions:
         predictions = [x.strip().split("\t") for x in predictions.readlines()]
 
-    explanations, times = run_explain(predictions, kg, kge_model, kge_config, lpx_config, factory)
+    explanations, times = run_explain(
+        predictions, kg, kge_model, kge_config, lpx_config, factory)
 
     if lpx_config["method"] != "mhs_explain":
-        predictions = [kg.label_triple(torch.tensor(kg.id_triple(p))) for p in predictions]
+        predictions = [kg.label_triple(torch.tensor(
+            kg.id_triple(p))) for p in predictions]
         explanations = [kg.label_triples(e) for e in explanations]
-    output = [{"prediction": predictions[i], "explanation": explanations[i], "time": times[i]} for i in range(len(predictions))]
+    output = [{"prediction": predictions[i], "explanation": explanations[i],
+               "time": times[i]} for i in range(len(predictions))]
     write_json(output, output_path)
     logger.info(f"Explanation completed. Results saved to {output_path}")
 
@@ -263,7 +274,7 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
 def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, output_path):
     """Evaluate explanations using LP-DIXIT protocol."""
     set_seeds(42)
-    
+
     logger.info(f"Starting evaluation for {kg_name}")
 
     explanations = read_json(explanations_path)

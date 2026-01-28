@@ -8,34 +8,35 @@ from .kg import KG
 
 def criage_sift(kg: KG, prediction, k: int = 20):
     """Extract top-k KG triples where the prediction's subject/object appears as object.
-    
+
     Selects triples from the training set where either the subject or object of
     the prediction appears in the object position of the triple.
-    
+
     Args:
         kg (KG): Knowledge graph containing training triples.
         prediction (torch.Tensor): Prediction triple (subject, predicate, object).
         k (int, optional): Maximum number of triples to return. Defaults to 20.
-        
+
     Returns:
         torch.Tensor: Top-k filtered triples of shape (k, 3).
     """
-    mask = (kg.training_triples[:, 2] == prediction[0]) | (kg.training_triples[:, 2] == prediction[2])
+    mask = (kg.training_triples[:, 2] == prediction[0]) | (
+        kg.training_triples[:, 2] == prediction[2])
     return kg.training_triples[mask][:k]
 
 
 def fitness(nx_kg, prediction, triple):
     """Compute the fitness score of a triple based on shortest path distance.
-    
+
     For a prediction <s, p, o> and triple <s, q, e> (or <e, q, s>), fitness is
     defined as the length of the shortest path between entity e and the
     prediction's object o. Lower values indicate higher fitness.
-    
+
     Args:
         nx_kg (networkx.MultiGraph): Knowledge graph as a NetworkX graph.
         prediction (torch.Tensor): Prediction triple (subject, predicate, object).
         triple (torch.Tensor): Triple to compute fitness for.
-        
+
     Returns:
         float: Shortest path length, or 1e6 if no path exists.
     """
@@ -50,16 +51,16 @@ def fitness(nx_kg, prediction, triple):
 
 def topology_sift(kg, prediction, triples, k: int = 10):
     """Select top-k triples with highest fitness based on graph topology.
-    
+
     Filters triples featuring the prediction's subject, ranking them by shortest
     path distance to the prediction's object (lower distance = higher fitness).
-    
+
     Args:
         kg: Knowledge graph with NetworkX graph representation.
         prediction (torch.Tensor): Prediction triple (subject, predicate, object).
         triples (torch.Tensor): Candidate triples to filter.
         k (int, optional): Maximum number of triples to return. Defaults to 10.
-        
+
     Returns:
         torch.Tensor: Top-k triples sorted by fitness, shape (k, 3).
     """
@@ -68,29 +69,30 @@ def topology_sift(kg, prediction, triples, k: int = 10):
 
 def get_statements(kg, prediction):
     """Extract all KG triples that feature the prediction's subject.
-    
+
     Returns triples where the prediction's subject appears in either the
     subject or object position.
-    
+
     Args:
         kg: Knowledge graph containing training triples.
         prediction (torch.Tensor): Prediction triple (subject, predicate, object).
-        
+
     Returns:
         torch.Tensor: Filtered triples featuring the prediction's subject.
     """
-    mask = (kg.training_triples[:, 0] == prediction[0]) | (kg.training_triples[:, 2] == prediction[0])
+    mask = (kg.training_triples[:, 0] == prediction[0]) | (
+        kg.training_triples[:, 2] == prediction[0])
     return kg.training_triples[mask]
 
 
 def pack_triples(triples, max_p, max_o):
     """Pack triples into a 1D tensor for efficient set operations.
-    
+
     Args:
         triples: Tensor of shape (N, 3) containing triples
         max_p: Maximum predicate ID
         max_o: Maximum object ID
-        
+
     Returns:
         1D tensor of packed triples
     """
@@ -101,18 +103,18 @@ def pack_triples(triples, max_p, max_o):
 
 def hypothesis(kg, summary, partition, prediction):
     """Generate hypothesis triples from simulation summary and prediction.
-    
+
     Constructs new candidate triples by expanding the summary graph around the
     entity in the prediction, using the partition mapping to generate concrete
     triples from the summarized representation. Filters out the prediction itself
     and any triples already in the training set.
-    
+
     Args:
         kg: Knowledge graph with training triples.
         summary (torch.Tensor): Summarized graph representation.
         partition (list): Mapping from summary entities to concrete entities.
         prediction (torch.Tensor): Prediction triple to generate hypotheses for.
-        
+
     Returns:
         torch.Tensor: Generated hypothesis triples on GPU, excluding existing triples.
     """

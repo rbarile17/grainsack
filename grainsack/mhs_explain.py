@@ -85,7 +85,8 @@ def consistent(kg, addition):
     output = result.stdout
     end_reasoning = time()
 
-    logger.debug(f"Serialization: {end_serialization - start_serialization:.2f}s, Reasoning: {end_reasoning - start_reasoning:.2f}s")
+    logger.debug(
+        f"Serialization: {end_serialization - start_serialization:.2f}s, Reasoning: {end_reasoning - start_reasoning:.2f}s")
 
     os.remove(temp_file_xml)
 
@@ -96,37 +97,54 @@ def get_abducibles(kg, prediction, kge_model, k):
     abd_inds = set()
     abd_preds = set()
 
-    classes = set(kg.rdf_kg.subjects(RDF.type, OWL.Class)) | set(kg.rdf_kg.subjects(RDF.type, RDFS.Class))
-    classes_id = {int(kg.entity_to_id[str(c)]) for c in classes if str(c) in kg.entity_to_id}
+    classes = set(kg.rdf_kg.subjects(RDF.type, OWL.Class)) | set(
+        kg.rdf_kg.subjects(RDF.type, RDFS.Class))
+    classes_id = {int(kg.entity_to_id[str(c)])
+                  for c in classes if str(c) in kg.entity_to_id}
 
     obj_props = set(kg.rdf_kg.subjects(RDF.type, OWL.ObjectProperty))
-    obj_props_id = {int(kg.relation_to_id[str(p)]) for p in obj_props if str(p) in kg.relation_to_id}
+    obj_props_id = {int(kg.relation_to_id[str(p)])
+                    for p in obj_props if str(p) in kg.relation_to_id}
 
     inds = set(kg.rdf_kg.subjects(RDF.type, OWL.NamedIndividual))
-    inds_id = {int(kg.entity_to_id[str(i)]) for i in inds if str(i) in kg.entity_to_id}
+    inds_id = {int(kg.entity_to_id[str(i)])
+               for i in inds if str(i) in kg.entity_to_id}
 
-    s_ = kge_model.entity_representations[0](torch.tensor(kg.entity_to_id[str(prediction[0])], dtype=torch.long).cuda()).detach()
+    s_ = kge_model.entity_representations[0](torch.tensor(
+        kg.entity_to_id[str(prediction[0])], dtype=torch.long).cuda()).detach()
     p_ = kge_model.relation_representations[0](
-        torch.tensor(kg.relation_to_id[str(prediction[1])], dtype=torch.long).cuda()
+        torch.tensor(kg.relation_to_id[str(
+            prediction[1])], dtype=torch.long).cuda()
     ).detach()
-    o_ = kge_model.entity_representations[0](torch.tensor(kg.entity_to_id[str(prediction[2])], dtype=torch.long).cuda()).detach()
+    o_ = kge_model.entity_representations[0](torch.tensor(
+        kg.entity_to_id[str(prediction[2])], dtype=torch.long).cuda()).detach()
 
-    inds_ = kge_model.entity_representations[0](torch.tensor(list(inds_id), dtype=torch.long).cuda()).detach()
-    obj_props_ = kge_model.relation_representations[0](torch.tensor(list(obj_props_id), dtype=torch.long).cuda()).detach()
-    classes_ = kge_model.entity_representations[0](torch.tensor(list(classes_id), dtype=torch.long).cuda()).detach()
+    inds_ = kge_model.entity_representations[0](
+        torch.tensor(list(inds_id), dtype=torch.long).cuda()).detach()
+    obj_props_ = kge_model.relation_representations[0](
+        torch.tensor(list(obj_props_id), dtype=torch.long).cuda()).detach()
+    classes_ = kge_model.entity_representations[0](
+        torch.tensor(list(classes_id), dtype=torch.long).cuda()).detach()
 
     if inds_.dtype == torch.cfloat:
         s_sim_inds = complex_cosine_similarity(s_.unsqueeze(0), inds_, dim=1)
         o_sim_inds = complex_cosine_similarity(o_.unsqueeze(0), inds_, dim=1)
-        s_sim_classes = complex_cosine_similarity(s_.unsqueeze(0), classes_, dim=1)
-        o_sim_classes = complex_cosine_similarity(o_.unsqueeze(0), classes_, dim=1)
+        s_sim_classes = complex_cosine_similarity(
+            s_.unsqueeze(0), classes_, dim=1)
+        o_sim_classes = complex_cosine_similarity(
+            o_.unsqueeze(0), classes_, dim=1)
         p_sim = complex_cosine_similarity(p_.unsqueeze(0), obj_props_, dim=1)
     else:
-        s_sim_inds = torch.nn.functional.cosine_similarity(s_.unsqueeze(0), inds_, dim=1)
-        o_sim_inds = torch.nn.functional.cosine_similarity(o_.unsqueeze(0), inds_, dim=1)
-        s_sim_classes = torch.nn.functional.cosine_similarity(s_.unsqueeze(0), classes_, dim=1)
-        o_sim_classes = torch.nn.functional.cosine_similarity(o_.unsqueeze(0), classes_, dim=1)
-        p_sim = torch.nn.functional.cosine_similarity(p_.unsqueeze(0), obj_props_, dim=1)
+        s_sim_inds = torch.nn.functional.cosine_similarity(
+            s_.unsqueeze(0), inds_, dim=1)
+        o_sim_inds = torch.nn.functional.cosine_similarity(
+            o_.unsqueeze(0), inds_, dim=1)
+        s_sim_classes = torch.nn.functional.cosine_similarity(
+            s_.unsqueeze(0), classes_, dim=1)
+        o_sim_classes = torch.nn.functional.cosine_similarity(
+            o_.unsqueeze(0), classes_, dim=1)
+        p_sim = torch.nn.functional.cosine_similarity(
+            p_.unsqueeze(0), obj_props_, dim=1)
 
     sim_inds = (s_sim_inds + o_sim_inds) / 2.0
     sim_classes = (s_sim_classes + o_sim_classes) / 2.0
@@ -219,7 +237,8 @@ def get_solutions(kg, not_observation, abducibles, max_depth=2):
     while pq:
         depth, _, path = heapq.heappop(pq)
 
-        logger.debug(f"[MHS] Exploring node {path} | depth={depth} | path_size={len(path)}")
+        logger.debug(
+            f"[MHS] Exploring node {path} | depth={depth} | path_size={len(path)}")
 
         if depth > max_depth:
             break
@@ -244,7 +263,8 @@ def get_solutions(kg, not_observation, abducibles, max_depth=2):
                 break
         if conflict is None:
             logger.info("[MHS] Computing new conflict")
-            conflict = find_min_conflict(set(), abducibles - path, kg | not_observation | path, abducibles)
+            conflict = find_min_conflict(
+                set(), abducibles - path, kg | not_observation | path, abducibles)
             conflicts.append(conflict)
             logger.info(f"[MHS] New conflict of size {len(conflict)}")
 
@@ -300,7 +320,8 @@ def get_justification(kg, addition):
 
 
 def mhs_explain(kg, kge_model, prediction, k=5):
-    prediction = (URIRef(prediction[0]), URIRef(prediction[1]), URIRef(prediction[2]))
+    prediction = (URIRef(prediction[0]), URIRef(
+        prediction[1]), URIRef(prediction[2]))
     logger.info("Getting abducibles")
     abducibles = get_abducibles(kg, prediction, kge_model, k) - {prediction}
     logger.info(f"Number of abducibles: {len(abducibles)}")

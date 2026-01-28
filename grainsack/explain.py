@@ -12,15 +12,16 @@ from .relevance import criage_relevance, dp_relevance, estimate_rank_variation
 from .sift import criage_sift, get_statements, hypothesis, topology_sift
 from .summarize import simulation_summary
 
-NO_SUMMARIZE = lambda x: (x, [])
+
+def NO_SUMMARIZE(x): return (x, [])
 
 
 def run_explain(predictions, kg, kge_model, kge_config, lpx_config, build_explainer):
     """Generate explanations for multiple predictions.
-    
+
     Computes explanations for given predictions using the specified KG, KGE model,
     and explanation method configured through the factory function.
-    
+
     Args:
         predictions (list): List of prediction triples to explain.
         kg (KG): Knowledge graph for generating explanations.
@@ -30,7 +31,7 @@ def run_explain(predictions, kg, kge_model, kge_config, lpx_config, build_explai
             and method-specific parameters.
         build_explainer (callable): Factory function that builds the explanation
             function from kg, kge_model, kge_config, and lpx_config.
-            
+
     Returns:
         tuple: (explanations, times) where:
             - explanations (list): List of explanation tensors, one per prediction.
@@ -54,12 +55,12 @@ def run_explain(predictions, kg, kge_model, kge_config, lpx_config, build_explai
 
 def build_combinatorial_optimization_explainer(kg, kge_model, kge_config, lpx_config):
     """Factory function that builds an explanation method from configuration.
-    
+
     Creates a configured explanation function based on the specified method
     (KELPIE, IMAGINE, CRIAGE, or DATA_POISONING). Each method combines different
     components for statement extraction, filtering, summarization, and relevance
     computation.
-    
+
     Args:
         kg (KG): Knowledge graph for explanation generation.
         kge_model: Trained KGE model for relevance computation.
@@ -67,11 +68,11 @@ def build_combinatorial_optimization_explainer(kg, kge_model, kge_config, lpx_co
         lpx_config (dict): Explanation configuration with keys:
             - 'method' (str): One of KELPIE, IMAGINE, CRIAGE, DATA_POISONING.
             - 'summarization' (str): Summarization strategy (e.g., SIMULATION).
-            
+
     Returns:
         callable: Configured explanation function that takes a prediction and
             returns explanation triples.
-            
+
     Raises:
         ValueError: If the specified method is not supported.
     """
@@ -126,7 +127,8 @@ def build_combinatorial_optimization_explainer(kg, kge_model, kge_config, lpx_co
         summary, partition = config["setup"]
         get_statements_partial = partial(hypothesis, kg, summary, partition)
         sift_partial = partial(topology_sift, kg)
-        relevance_partial = partial(estimate_rank_variation, kg, kge_model, kge_config)
+        relevance_partial = partial(
+            estimate_rank_variation, kg, kge_model, kge_config)
         summarize_partial = get_summarize_fn()
     else:
         get_statements_partial = config["get_statements"]
@@ -151,12 +153,12 @@ def run_combinatorial_optimization(
     kg, relevance, get_statements, sift, summarize, prediction, max_length=2, kelpie=True, operation=None
 ):
     """Explain a prediction via combinatorial optimization over candidate statements.
-    
+
     Generates an explanation by: (1) extracting candidate statements related to
     the prediction, (2) filtering/sifting for relevant statements, (3) optionally
     summarizing, (4) evaluating combinations up to max_length, and (5) selecting
     the combination with highest relevance score.
-    
+
     Args:
         kg (KG): Knowledge graph.
         relevance (callable): Function computing relevance scores for statement combinations.
@@ -167,7 +169,7 @@ def run_combinatorial_optimization(
         max_length (int, optional): Maximum number of statements in explanation. Defaults to 2.
         kelpie (bool, optional): Whether to use Kelpie-style relevance computation. Defaults to True.
         operation (str, optional): Operation for relevance ('add' or 'remove'). Defaults to None.
-        
+
     Returns:
         list: Single-element list containing the best explanation as a tensor of triples,
             or [[]] if no explanation is found or an error occurs.
@@ -192,10 +194,12 @@ def run_combinatorial_optimization(
 
         for length in range(1, min(statements.size(0), max_length) + 1):
             logger.info(f"Evaluating combinations of length {length}")
-            idx = torch.tensor(list(combinations(range(statements.size(0)), length)))
+            idx = torch.tensor(
+                list(combinations(range(statements.size(0)), length)))
             combos = statements[idx].squeeze(2)
             if kelpie:
-                relevances = relevance(prediction, combos, original_statements, partition, operation=operation)
+                relevances = relevance(
+                    prediction, combos, original_statements, partition, operation=operation)
             else:
                 relevances = relevance(prediction, combos)
 
@@ -207,7 +211,8 @@ def run_combinatorial_optimization(
             if partition == []:
                 mapped_statement.append((i, p, j))
             else:
-                mapped_statement.extend([(s.item(), p.item(), o.item()) for s in partition[i] for o in partition[j]])
+                mapped_statement.extend(
+                    [(s.item(), p.item(), o.item()) for s in partition[i] for o in partition[j]])
 
         mapped_statement = torch.tensor(mapped_statement, dtype=torch.int)
 

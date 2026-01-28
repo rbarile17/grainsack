@@ -1,11 +1,14 @@
 import hashlib
 import json
+import os
 import re
 import subprocess
+import tempfile
 import time
 
 import luigi
 import pandas as pd
+import yaml
 
 from grainsack import (
     EVALUATIONS_PATH,
@@ -23,14 +26,14 @@ from grainsack.utils import read_json, write_json
 
 def hash_json_string(*json_strings, length=8):
     """Generate a short hash from one or more JSON strings.
-    
+
     Parses JSON strings, sorts keys for consistent ordering, and generates
     an MD5 hash for use in unique identifiers.
-    
+
     Args:
         *json_strings (str): One or more JSON-formatted strings.
         length (int, optional): Length of the returned hash. Defaults to 8.
-        
+
     Returns:
         str: Hexadecimal hash string of specified length.
     """
@@ -41,13 +44,13 @@ def hash_json_string(*json_strings, length=8):
 
 def run(script, args):
     """Execute a grainsack operation script directly with Python.
-    
+
     Runs a script from the grainsack.operations module with the given arguments.
-    
+
     Args:
         script (str): Name of the script/command to run (e.g., 'train', 'explain').
         args (list): Command-line arguments to pass to the script.
-        
+
     Raises:
         subprocess.CalledProcessError: If the script execution fails.
     """
@@ -57,14 +60,14 @@ def run(script, args):
 
 def run_slurm(script, args):
     """Submit and monitor a SLURM batch job.
-    
+
     Submits a job to SLURM using sbatch, monitors its status, and blocks
     until completion or failure.
-    
+
     Args:
         script (str): Name of the SLURM script in slurm/ directory (without .sh).
         args (list): Arguments to pass to the SLURM script.
-        
+
     Raises:
         RuntimeError: If the job fails, is cancelled, times out, or node fails.
     """
@@ -74,9 +77,11 @@ def run_slurm(script, args):
     job_id = match.group(1)
     while True:
         status_cmd = ["sacct", "-j", job_id, "--format=State", "--noheader"]
-        status_output = subprocess.check_output(status_cmd).decode("utf-8").strip()
+        status_output = subprocess.check_output(
+            status_cmd).decode("utf-8").strip()
 
-        status_lines = [line.strip() for line in status_output.splitlines() if line.strip()]
+        status_lines = [line.strip()
+                        for line in status_output.splitlines() if line.strip()]
         if status_lines:
             job_state = status_lines[0].split()[0]
         else:
@@ -91,78 +96,86 @@ def run_slurm(script, args):
 
 def run_kubernetes(script, params_dict):
     """Submit and monitor a Kubernetes job.
-    
+
     Creates a Kubernetes job from a template, submits it, monitors its status,
     and blocks until completion or failure. Cleans up temporary files.
-    
+
     Args:
         script (str): Name of the script (e.g., 'tune', 'train'), used to
             locate template in kubernetes/ directory.
         params_dict (dict): Parameter dictionary converted to command-line
             arguments for the container.
-            
+
     Raises:
         RuntimeError: If the Kubernetes job fails.
     """
-    import tempfile
-    import yaml
-    import os
-    
+
     job_name = f"{script}-{hash_json_string(json.dumps(params_dict, sort_keys=True))}"
-    
+
     template_path = f"kubernetes/{script}.yml"
-    with open(template_path, 'r') as f:
+    with open(template_path, "r") as f:
         job_spec = yaml.safe_load(f)
-    
-    job_spec['metadata']['name'] = job_name
-    
-    container = job_spec['spec']['template']['spec']['containers'][0]
+
+    job_spec["metadata"]["name"] = job_name
+
+    container = job_spec["spec"]["template"]["spec"]["containers"][0]
     cmd_args = []
     log_path = None
     for key, value in params_dict.items():
-        if key == 'log_path':
+        if key == "log_path":
             log_path = str(value)
         else:
             cmd_args.extend([f"--{key}", str(value)])
-    
+
     # Build command with shell redirection for log
     python_cmd = f"python -u -m grainsack.operations {script}"
     for i in range(0, len(cmd_args), 2):
         python_cmd += f" {cmd_args[i]} {cmd_args[i+1]}"
-    
+
     if log_path:
         python_cmd += f" > {log_path} 2>&1"
-    
-    container['command'] = ["/bin/bash", "-c", python_cmd]
-    
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+
+    container["command"] = ["/bin/bash", "-c", python_cmd]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
         yaml.dump(job_spec, f)
         temp_file = f.name
-    
+
     try:
         create_cmd = ["kubectl", "create", "-f", temp_file]
         subprocess.run(create_cmd, check=True)
-        
+
         while True:
-            status_cmd = ["kubectl", "get", "job", job_name, "-o", "jsonpath={.status.conditions[?(@.type=='Complete')].status}"]
+            status_cmd = ["kubectl", "get", "job", job_name, "-o",
+                          "jsonpath={.status.conditions[?(@.type=='Complete')].status}"]
             try:
-                complete_status = subprocess.check_output(status_cmd, stderr=subprocess.DEVNULL).decode("utf-8").strip()
+                complete_status = subprocess.check_output(
+                    status_cmd, stderr=subprocess.DEVNULL).decode("utf-8").strip()
             except subprocess.CalledProcessError:
                 complete_status = ""
-            
-            status_cmd_failed = ["kubectl", "get", "job", job_name, "-o", "jsonpath={.status.conditions[?(@.type=='Failed')].status}"]
+
+            status_cmd_failed = [
+                "kubectl",
+                "get",
+                "job",
+                job_name,
+                "-o",
+                "jsonpath={.status.conditions[?(@.type=='Failed')].status}",
+            ]
             try:
-                failed_status = subprocess.check_output(status_cmd_failed, stderr=subprocess.DEVNULL).decode("utf-8").strip()
+                failed_status = subprocess.check_output(
+                    status_cmd_failed, stderr=subprocess.DEVNULL).decode("utf-8").strip()
             except subprocess.CalledProcessError:
                 failed_status = ""
-            
-            logger.info(f"Job {job_name} status - Complete: {complete_status}, Failed: {failed_status}")
+
+            logger.info(
+                f"Job {job_name} status - Complete: {complete_status}, Failed: {failed_status}")
 
             if complete_status == "True":
                 break
             if failed_status == "True":
                 raise RuntimeError(f"Kubernetes job {job_name} failed")
-            
+
             time.sleep(10)
     finally:
         if os.path.exists(temp_file):
@@ -171,24 +184,24 @@ def run_kubernetes(script, params_dict):
 
 class BaseTask(luigi.Task):
     """Base Luigi task with common parameter conversion functionality.
-    
+
     Provides standardized methods for converting task parameters to different
     formats needed by various execution backends (direct Python, SLURM, Kubernetes).
     Subclasses should implement params_as_dict() and optionally override other methods
     for custom parameter handling.
     """
-    
+
     def params_as_dict(self):
         """Convert task parameters to a dictionary.
-        
+
         Returns:
             dict: Parameter names and values.
-            
+
         Raises:
             NotImplementedError: Must be implemented by subclass.
         """
         raise NotImplementedError
-    
+
     def params_as_args(self):
         """Convert parameters to command line arguments."""
         params = self.params_as_dict()
@@ -196,48 +209,44 @@ class BaseTask(luigi.Task):
         for key, value in params.items():
             args.extend([f"--{key}", str(value)])
         return args
-    
+
     def slurm_params_as_args(self):
         """Convert parameters to SLURM-specific argument list.
-        
+
         By default, returns parameter values without keys. Override in subclasses
         if SLURM scripts require different formatting (e.g., including log paths).
-        
+
         Returns:
             list: Parameter values as a list.
         """
         return list(self.params_as_dict().values())
-    
+
     def kubernetes_params_as_dict(self):
         """Convert parameters to Kubernetes-compatible dictionary.
-        
-        Converts all Path objects to strings for YAML serialization. 
+
+        Converts all Path objects to strings for YAML serialization.
         Automatically includes log_path if the task has it defined.
         Override if additional parameter transformations are needed.
-        
+
         Returns:
             dict: Parameters with Path objects converted to strings.
         """
         params = {k: str(v) for k, v in self.params_as_dict().items()}
-        if hasattr(self, 'log_path'):
-            params['log_path'] = str(self.log_path)
+        if hasattr(self, "log_path"):
+            params["log_path"] = str(self.log_path)
         return params
-    
+
     def run_with_executor(self, script_name):
         """Execute task using the appropriate backend executor.
-        
+
         Determines the execution backend from the EXECUTOR environment variable
         and runs the task using either Kubernetes or SLURM.
-        
+
         Args:
             script_name (str): Name of the operation script to execute.
         """
-        
-        import os
-        if os.getenv("EXECUTOR") == "kubernetes":
-            run_kubernetes(script_name, self.kubernetes_params_as_dict())
-        else:
-            run_slurm(script_name, self.slurm_params_as_args())
+
+        run_kubernetes(script_name, self.kubernetes_params_as_dict())
 
 
 class Tune(BaseTask):
@@ -246,8 +255,10 @@ class Tune(BaseTask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.output_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
-        self.log_path = LOGS_PATH / f"tune_{self.kg_name}_{self.kge_model_name}.log"
+        self.output_path = LP_CONFIGS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.json"
+        self.log_path = LOGS_PATH / \
+            f"tune_{self.kg_name}_{self.kge_model_name}.log"
 
     def requires(self):
         """Declare dependencies."""
@@ -259,12 +270,8 @@ class Tune(BaseTask):
 
     def params_as_dict(self):
         """Convert parameters to dictionary."""
-        return {
-            "kg_name": self.kg_name,
-            "kge_model_name": self.kge_model_name,
-            "output_path": self.output_path
-        }
-    
+        return {"kg_name": self.kg_name, "kge_model_name": self.kge_model_name, "output_path": self.output_path}
+
     def slurm_params_as_args(self):
         """SLURM needs log_path as well."""
         return [self.kg_name, self.kge_model_name, self.output_path, self.log_path]
@@ -280,9 +287,12 @@ class Train(BaseTask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
-        self.output_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
-        self.log_path = LOGS_PATH / f"train_{self.kg_name}_{self.kge_model_name}.log"
+        self.kge_config_path = LP_CONFIGS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.json"
+        self.output_path = KGES_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.pt"
+        self.log_path = LOGS_PATH / \
+            f"train_{self.kg_name}_{self.kge_model_name}.log"
 
     def requires(self):
         """Declare dependencies."""
@@ -294,12 +304,8 @@ class Train(BaseTask):
 
     def params_as_dict(self):
         """Convert parameters to dictionary."""
-        return {
-            "kg_name": self.kg_name,
-            "kge_config_path": self.kge_config_path,
-            "output_path": self.output_path
-        }
-    
+        return {"kg_name": self.kg_name, "kge_config_path": self.kge_config_path, "output_path": self.output_path}
+
     def slurm_params_as_args(self):
         """SLURM needs log_path as well."""
         return [self.kg_name, self.kge_config_path, self.output_path, self.log_path]
@@ -315,10 +321,14 @@ class Rank(BaseTask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
-        self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
-        self.output_path = PREDICTIONS_PATH / f"{self.kg_name}_{self.kge_model_name}.csv"
-        self.log_path = LOGS_PATH / f"rank_{self.kg_name}_{self.kge_model_name}.log"
+        self.kge_model_path = KGES_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.pt"
+        self.kge_config_path = LP_CONFIGS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.json"
+        self.output_path = PREDICTIONS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.csv"
+        self.log_path = LOGS_PATH / \
+            f"rank_{self.kg_name}_{self.kge_model_name}.log"
 
     def requires(self):
         """Declare dependencies."""
@@ -353,8 +363,10 @@ class SelectPredictions(luigi.Task):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.predictions_path = PREDICTIONS_PATH / f"{self.kg_name}_{self.kge_model_name}.csv"
-        self.output_path = SELECTED_PREDICTIONS_PATH / f"{self.kg_name}_{self.kge_model_name}.csv"
+        self.predictions_path = PREDICTIONS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.csv"
+        self.output_path = SELECTED_PREDICTIONS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.csv"
 
     def requires(self):
         """Declare dependencies."""
@@ -381,14 +393,19 @@ class Explain(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         lpx_config = json.loads(self.lpx_config)
-        self.predictions_path = SELECTED_PREDICTIONS_PATH / f"{self.kg_name}_{self.kge_model_name}.csv"
-        self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
-        self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
+        self.predictions_path = SELECTED_PREDICTIONS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.csv"
+        self.kge_model_path = KGES_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.pt"
+        self.kge_config_path = LP_CONFIGS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.json"
         self.output_path = (
-            EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+            EXPLANATIONS_PATH /
+            f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
         )
         self.log_path = (
-            LOGS_PATH / f"explain_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
+            LOGS_PATH /
+            f"explain_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
         )
 
     def requires(self):
@@ -437,16 +454,21 @@ class Evaluate(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         lpx_config = json.loads(self.lpx_config)
-        self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
-        self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
+        self.kge_model_path = KGES_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.pt"
+        self.kge_config_path = LP_CONFIGS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.json"
         self.explanations_path = (
-            EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+            EXPLANATIONS_PATH /
+            f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
         )
         self.output_path = (
-            EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+            EVALUATIONS_PATH /
+            f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
         )
         self.log_path = (
-            LOGS_PATH / f"evaluate_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
+            LOGS_PATH /
+            f"evaluate_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
         )
 
     def requires(self):
@@ -459,22 +481,11 @@ class Evaluate(BaseTask):
 
     def params_as_dict(self):
         """Convert parameters to dictionary."""
-        return {
-            "explanations_path": self.explanations_path,
-            "kg_name": self.kg_name,
-            "output_path": self.output_path
-        }
+        return {"explanations_path": self.explanations_path, "kg_name": self.kg_name, "output_path": self.output_path}
 
     def slurm_params_as_args(self):
         """SLURM needs additional paths."""
-        return [
-            self.explanations_path,
-            self.kg_name,
-            self.kge_model_path,
-            self.kge_config_path,
-            self.output_path,
-            self.log_path
-        ]
+        return [self.explanations_path, self.kg_name, self.kge_model_path, self.kge_config_path, self.output_path, self.log_path]
 
     def run(self):
         """Execute the task."""
@@ -495,10 +506,12 @@ class Metrics(luigi.Task):
         lpx_config = json.loads(self.lpx_config)
 
         self.evaluations_path = (
-            EVALUATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+            EVALUATIONS_PATH /
+            f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
         )
         self.output_path = (
-            METRICS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+            METRICS_PATH /
+            f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
         )
 
     def requires(self):
