@@ -189,7 +189,7 @@ def run_combinatorial_optimization(
         statements = statements.unsqueeze(1)
 
         if statements.size(0) == 0:
-            logger.warning("No statements found")
+            logger.info("No statements found")
             return [[]]
 
         for length in range(1, min(statements.size(0), max_length) + 1):
@@ -218,5 +218,5 @@ def run_combinatorial_optimization(
 
         return [mapped_statement]
     except Exception as e:
-        logger.error(f"An error occurred during explanation: {e}")
+        logger.info(f"An error occurred during explanation: {e}")
         return [[]]

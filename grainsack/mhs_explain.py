@@ -85,7 +85,7 @@ def consistent(kg, addition):
     output = result.stdout
     end_reasoning = time()
 
-    logger.debug(
+    logger.info(
         f"Serialization: {end_serialization - start_serialization:.2f}s, Reasoning: {end_reasoning - start_reasoning:.2f}s")
 
     os.remove(temp_file_xml)
@@ -197,7 +197,7 @@ def find_min_conflict(r, a, k, u):
 
 
 def find_min_conflict_(r, a, k, u):
-    logger.debug(f"find_min_conflict_: r={len(r)}, a={len(a)}")
+    logger.info(f"find_min_conflict_: r={len(r)}, a={len(a)}")
 
     if r and consistent(k, u - r):
         return set()
@@ -237,7 +237,7 @@ def get_solutions(kg, not_observation, abducibles, max_depth=2):
     while pq:
         depth, _, path = heapq.heappop(pq)
 
-        logger.debug(
+        logger.info(
             f"[MHS] Exploring node {path} | depth={depth} | path_size={len(path)}")
 
         if depth > max_depth:
@@ -312,7 +312,7 @@ def get_justification(kg, addition):
         os.remove(inconsistency_file_name)
     except FileNotFoundError as e:
         explanation = "No justification found."
-        logger.warning(f"Justification file not found: {e}")
+        logger.info(f"Justification file not found: {e}")
 
     os.remove(temp_file_xml)
 
