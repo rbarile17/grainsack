@@ -14,7 +14,11 @@ spec:
         env:
           - name: PYSTOW_HOME
             value: /lustrehome/robertobarile
-        command: ["python", "-u", "-m", "grainsack.operations", "tune", "--kg_name", "ATRAVEL-MATERIALIZE", "--kge_model_name", "TransE", "--output_path", "./experiments/kge_models/ATRAVEL-MATERIALIZE_TransE.pt"]
+          - name: TORCHINDUCTOR_CACHE_DIR
+            value: /tmp/torchinductor
+          - name: TORCHDYNAMO_CACHE_DIR
+            value: /tmp/torchdynamo
+        command: ["python", "-u", "-m", "grainsack.operations", "tune"]
         resources:
           requests:
             cpu: "0.2"
@@ -22,7 +26,7 @@ spec:
           limits:
             cpu: "2"
             memory: "4Gi"
-            nvidia.com/gpu: 2
+            nvidia.com/gpu: 1
         volumeMounts:
         - name: lustre
           mountPath: /lustre
