@@ -19,7 +19,8 @@ import numpy as np
 import pandas as pd
 import torch
 from pykeen.evaluation import RankBasedEvaluator
-from pykeen.pipeline import hpo_pipeline, pipeline
+from pykeen.hpo import hpo_pipeline
+from pykeen.pipeline import pipeline
 
 from grainsack import EXPERIMENTS_PATH
 from grainsack.evaluate import run_evaluate
@@ -271,7 +272,7 @@ def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, output
 @cli.command()
 def comparison():
     """Run complete benchmarking workflow from comparison_setup.csv."""
-    luigi.build([Comparison()], local_scheduler=True, workers=64)
+    luigi.build([Comparison()], local_scheduler=True)
 
 
 if __name__ == "__main__":
