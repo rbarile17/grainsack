@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import re
@@ -22,24 +21,6 @@ from grainsack import (
     logger,
 )
 from grainsack.utils import read_json, write_json
-
-
-def hash_json_string(*json_strings, length=8):
-    """Generate a short hash from one or more JSON strings.
-
-    Parses JSON strings, sorts keys for consistent ordering, and generates
-    an MD5 hash for use in unique identifiers.
-
-    Args:
-        *json_strings (str): One or more JSON-formatted strings.
-        length (int, optional): Length of the returned hash. Defaults to 8.
-
-    Returns:
-        str: Hexadecimal hash string of specified length.
-    """
-    parsed = [json.loads(s) for s in json_strings]
-    serialized = json.dumps(parsed, sort_keys=True)
-    return hashlib.md5(serialized.encode("utf-8")).hexdigest()[:length]
 
 
 def run(script, args):
@@ -110,7 +91,7 @@ def run_kubernetes(script, params_dict):
         RuntimeError: If the Kubernetes job fails.
     """
 
-    job_name = f"{script}-{hash_json_string(json.dumps(params_dict, sort_keys=True))}"
+    job_name = params_dict.pop("job_name")
 
     template_path = f"kubernetes/{script}.yml"
     with open(template_path, "r") as f:
@@ -127,7 +108,6 @@ def run_kubernetes(script, params_dict):
         else:
             cmd_args.extend([f"--{key}", str(value)])
 
-    # Build command with shell redirection for log
     python_cmd = f"python -u -m grainsack.operations {script}"
     for i in range(0, len(cmd_args), 2):
         python_cmd += f" {cmd_args[i]} {cmd_args[i+1]}"
@@ -234,6 +214,8 @@ class BaseTask(luigi.Task):
         params = {k: str(v) for k, v in self.params_as_dict().items()}
         if hasattr(self, "log_path"):
             params["log_path"] = str(self.log_path)
+        if hasattr(self, "job_name"):
+            params["job_name"] = self.job_name
         return params
 
     def run_with_executor(self, script_name):
@@ -255,10 +237,9 @@ class Tune(BaseTask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.output_path = LP_CONFIGS_PATH / \
-            f"{self.kg_name}_{self.kge_model_name}.json"
-        self.log_path = LOGS_PATH / \
-            f"tune_{self.kg_name}_{self.kge_model_name}.log"
+        self.job_name = f"tune_{self.kg_name}_{self.kge_model_name}"
+        self.output_path = LP_CONFIGS_PATH / f"{self.job_name.removeprefix('tune_')}.json"
+        self.log_path = LOGS_PATH / f"{self.job_name}.log"
 
     def requires(self):
         """Declare dependencies."""
@@ -287,12 +268,10 @@ class Train(BaseTask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.kge_config_path = LP_CONFIGS_PATH / \
-            f"{self.kg_name}_{self.kge_model_name}.json"
-        self.output_path = KGES_PATH / \
-            f"{self.kg_name}_{self.kge_model_name}.pt"
-        self.log_path = LOGS_PATH / \
-            f"train_{self.kg_name}_{self.kge_model_name}.log"
+        self.job_name = f"train_{self.kg_name}_{self.kge_model_name}"
+        self.kge_config_path = LP_CONFIGS_PATH / f"{self.job_name.removeprefix('train_')}.json"
+        self.output_path = KGES_PATH / f"{self.job_name.removeprefix('train_')}.pt"
+        self.log_path = LOGS_PATH / f"{self.job_name}.log"
 
     def requires(self):
         """Declare dependencies."""
@@ -321,14 +300,11 @@ class Rank(BaseTask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.kge_model_path = KGES_PATH / \
-            f"{self.kg_name}_{self.kge_model_name}.pt"
-        self.kge_config_path = LP_CONFIGS_PATH / \
-            f"{self.kg_name}_{self.kge_model_name}.json"
-        self.output_path = PREDICTIONS_PATH / \
-            f"{self.kg_name}_{self.kge_model_name}.csv"
-        self.log_path = LOGS_PATH / \
-            f"rank_{self.kg_name}_{self.kge_model_name}.log"
+        self.job_name = f"rank_{self.kg_name}_{self.kge_model_name}"
+        self.kge_model_path = KGES_PATH / f"{self.job_name.removeprefix('rank_')}.pt"
+        self.kge_config_path = LP_CONFIGS_PATH / f"{self.job_name.removeprefix('rank_')}.json"
+        self.output_path = PREDICTIONS_PATH / f"{self.job_name.removeprefix('rank_')}.csv"
+        self.log_path = LOGS_PATH / f"{self.job_name}.log"
 
     def requires(self):
         """Declare dependencies."""
@@ -393,20 +369,12 @@ class Explain(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         lpx_config = json.loads(self.lpx_config)
-        self.predictions_path = SELECTED_PREDICTIONS_PATH / \
-            f"{self.kg_name}_{self.kge_model_name}.csv"
-        self.kge_model_path = KGES_PATH / \
-            f"{self.kg_name}_{self.kge_model_name}.pt"
-        self.kge_config_path = LP_CONFIGS_PATH / \
-            f"{self.kg_name}_{self.kge_model_name}.json"
-        self.output_path = (
-            EXPLANATIONS_PATH /
-            f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
-        )
-        self.log_path = (
-            LOGS_PATH /
-            f"explain_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
-        )
+        self.job_name = f"explain_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}"
+        self.predictions_path = SELECTED_PREDICTIONS_PATH / f"{self.kg_name}_{self.kge_model_name}.csv"
+        self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
+        self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
+        self.output_path = EXPLANATIONS_PATH / f"{self.job_name.removeprefix('explain_')}.json"
+        self.log_path = LOGS_PATH / f"{self.job_name}.log"
 
     def requires(self):
         """Declare dependencies."""
@@ -454,22 +422,12 @@ class Evaluate(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         lpx_config = json.loads(self.lpx_config)
-        self.kge_model_path = KGES_PATH / \
-            f"{self.kg_name}_{self.kge_model_name}.pt"
-        self.kge_config_path = LP_CONFIGS_PATH / \
-            f"{self.kg_name}_{self.kge_model_name}.json"
-        self.explanations_path = (
-            EXPLANATIONS_PATH /
-            f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
-        )
-        self.output_path = (
-            EVALUATIONS_PATH /
-            f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
-        )
-        self.log_path = (
-            LOGS_PATH /
-            f"evaluate_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.log"
-        )
+        self.job_name = f"evaluate_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}"
+        self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
+        self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
+        self.explanations_path = EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+        self.output_path = EVALUATIONS_PATH / f"{self.job_name.removeprefix('evaluate_')}.json"
+        self.log_path = LOGS_PATH / f"{self.job_name}.log"
 
     def requires(self):
         """Declare dependencies."""
@@ -502,17 +460,10 @@ class Metrics(luigi.Task):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         lpx_config = json.loads(self.lpx_config)
-
-        self.evaluations_path = (
-            EVALUATIONS_PATH /
-            f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
-        )
-        self.output_path = (
-            METRICS_PATH /
-            f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
-        )
+        base_name = f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}"
+        self.evaluations_path = EVALUATIONS_PATH / f"{base_name}.json"
+        self.output_path = METRICS_PATH / f"{base_name}.json"
 
     def requires(self):
         """Declare dependencies"""
@@ -543,4 +494,4 @@ class Comparison(luigi.WrapperTask):
         """Instantiate the DAG from the experimental setup."""
 
         df = pd.read_csv("comparison_setup.csv", sep=";")
-        return [Metrics(**row, metric_name="comparison_metrics") for row in df.to_dict(orient="records")]
+        return [Explain(**row) for row in df.to_dict(orient="records")]

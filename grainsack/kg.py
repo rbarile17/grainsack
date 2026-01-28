@@ -10,7 +10,7 @@ from pykeen.datasets import get_dataset
 from pykeen.triples.triples_factory import TriplesFactory
 from rdflib import RDF, Graph
 
-from . import KGS_PATH, logger
+from . import KGS_PATH, logger, DEVICE
 
 
 class KG:
@@ -89,12 +89,12 @@ class KG:
 
     @property
     def training_triples(self) -> torch.Tensor:
-        """Get the training triples as a GPU tensor.
+        """Get the training triples as a tensor on the configured device.
 
         Returns:
-            torch.Tensor: Training triples with integer IDs, shape (N, 3), on CUDA.
+            torch.Tensor: Training triples with integer IDs, shape (N, 3).
         """
-        return self._kg.training.mapped_triples.cuda()
+        return self._kg.training.mapped_triples.to(DEVICE)
 
     @property
     def validation(self) -> TriplesFactory:
@@ -107,12 +107,12 @@ class KG:
 
     @property
     def validation_triples(self) -> torch.Tensor:
-        """Get the validation triples as a GPU tensor.
+        """Get the validation triples as a tensor on the configured device.
 
         Returns:
-            torch.Tensor: Validation triples with integer IDs, shape (N, 3), on CUDA.
+            torch.Tensor: Validation triples with integer IDs, shape (N, 3).
         """
-        return self._kg.validation.mapped_triples.cuda()
+        return self._kg.validation.mapped_triples.to(DEVICE)
 
     @property
     def testing(self) -> TriplesFactory:
@@ -129,7 +129,7 @@ class KG:
         Get the testing triples.
         :return: The testing triples.
         """
-        return self._kg.testing.mapped_triples.cuda()
+        return self._kg.testing.mapped_triples.to(DEVICE)
 
     @property
     def num_entities(self) -> int:
@@ -210,7 +210,7 @@ class KG:
         entity_types = self.entity_types[self.entity_types.entity.isin(nodes)]
         partition = entity_types.groupby("classes_str")["entity"].apply(list)
         partition = partition.to_dict()
-        partition = [torch.tensor(p, dtype=torch.long).cuda()
+        partition = [torch.tensor(p, dtype=torch.long).to(DEVICE)
                      for p in partition.values()]
 
         return partition

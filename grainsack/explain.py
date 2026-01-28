@@ -7,7 +7,7 @@ from itertools import combinations
 
 import torch
 
-from . import CRIAGE, DATA_POISONING, IMAGINE, KELPIE, SIMULATION, logger
+from . import CRIAGE, DATA_POISONING, IMAGINE, KELPIE, SIMULATION, logger, DEVICE
 from .relevance import criage_relevance, dp_relevance, estimate_rank_variation
 from .sift import criage_sift, get_statements, hypothesis, topology_sift
 from .summarize import simulation_summary
@@ -177,7 +177,7 @@ def run_combinatorial_optimization(
     try:
         logger.info(f"Explaining prediction: {prediction}")
         prediction = kg.id_triple(prediction)
-        prediction = torch.tensor(prediction).cuda()
+        prediction = torch.tensor(prediction).to(DEVICE)
 
         logger.info("Getting statements")
 

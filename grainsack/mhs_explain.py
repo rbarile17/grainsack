@@ -8,6 +8,8 @@ from time import time
 
 import torch
 from rdflib import BNode, Graph, URIRef
+
+from grainsack import DEVICE
 from rdflib.namespace import OWL, RDF, RDFS
 from tqdm import tqdm
 
@@ -111,20 +113,20 @@ def get_abducibles(kg, prediction, kge_model, k):
                for i in inds if str(i) in kg.entity_to_id}
 
     s_ = kge_model.entity_representations[0](torch.tensor(
-        kg.entity_to_id[str(prediction[0])], dtype=torch.long).cuda()).detach()
+        kg.entity_to_id[str(prediction[0])], dtype=torch.long).to(DEVICE)).detach()
     p_ = kge_model.relation_representations[0](
         torch.tensor(kg.relation_to_id[str(
-            prediction[1])], dtype=torch.long).cuda()
+            prediction[1])], dtype=torch.long).to(DEVICE)
     ).detach()
     o_ = kge_model.entity_representations[0](torch.tensor(
-        kg.entity_to_id[str(prediction[2])], dtype=torch.long).cuda()).detach()
+        kg.entity_to_id[str(prediction[2])], dtype=torch.long).to(DEVICE)).detach()
 
     inds_ = kge_model.entity_representations[0](
-        torch.tensor(list(inds_id), dtype=torch.long).cuda()).detach()
+        torch.tensor(list(inds_id), dtype=torch.long).to(DEVICE)).detach()
     obj_props_ = kge_model.relation_representations[0](
-        torch.tensor(list(obj_props_id), dtype=torch.long).cuda()).detach()
+        torch.tensor(list(obj_props_id), dtype=torch.long).to(DEVICE)).detach()
     classes_ = kge_model.entity_representations[0](
-        torch.tensor(list(classes_id), dtype=torch.long).cuda()).detach()
+        torch.tensor(list(classes_id), dtype=torch.long).to(DEVICE)).detach()
 
     if inds_.dtype == torch.cfloat:
         s_sim_inds = complex_cosine_similarity(s_.unsqueeze(0), inds_, dim=1)

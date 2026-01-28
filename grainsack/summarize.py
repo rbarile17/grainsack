@@ -2,6 +2,8 @@
 
 import torch
 
+from grainsack import DEVICE
+
 
 def simulation_summary(kg, triples):
     """Compute the simulation of a (sub-)graph"""
@@ -12,7 +14,7 @@ def simulation_summary(kg, triples):
     objects = triples[:, 2]
 
     max_ent = torch.max(torch.stack([subjects.max(), objects.max()])).item()
-    entity2class = torch.full((max_ent + 1,), -1, dtype=torch.int32).cuda()
+    entity2class = torch.full((max_ent + 1,), -1, dtype=torch.int32).to(DEVICE)
 
     for cid, ents in enumerate(partition):
         entity2class[ents] = cid

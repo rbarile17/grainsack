@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: workflow
+spec:
+  ttlSecondsAfterFinished: 604800
+  backoffLimit: 0                     
+  template:
+    spec:
+      containers:
+      - name: workflow
+        image: rbarile17/grainsack
+        command: ["python", "-u", "-m", "grainsack.operations", "comparison"]
+        env:
+        - name: GRAINSACK_DEVICE
+          value: "cpu"
+        resources:
+          requests:
+            cpu: "0.2"
+            memory: "100Mi"        
+          limits:
+            cpu: "4"
+            memory: "8Gi"
+        volumeMounts:
+        - name: lustre
+          mountPath: /lustre
+        - name: lustrehome
+          mountPath: /lustrehome
+      restartPolicy: Never
+      volumes:
+      - name: lustre
+        hostPath:
+          path: /lustre
+          type: Directory
+      - name: lustrehome
+        hostPath:
+          path: /lustrehome
+          type: Directory

@@ -1,7 +1,10 @@
 """This module contains constants used throughout the grainsack package."""
 
 import logging
+import os
 from pathlib import Path
+
+import torch
 
 logging.basicConfig(
     level=logging.INFO,
@@ -12,6 +15,21 @@ logging.basicConfig(
 logger = logging.getLogger('grainsack')
 
 MAX_PROCESSES = 8
+
+# Device management: support both CPU and GPU execution
+# Set GRAINSACK_DEVICE environment variable to 'cpu' to force CPU mode
+_device_env = os.environ.get('GRAINSACK_DEVICE', 'auto').lower()
+if _device_env == 'cpu':
+    DEVICE = torch.device('cpu')
+    USE_CUDA = False
+elif _device_env == 'cuda' or _device_env == 'gpu':
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    USE_CUDA = torch.cuda.is_available()
+else:  # auto
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    USE_CUDA = torch.cuda.is_available()
+
+logger.info(f"Using device: {DEVICE} (USE_CUDA={USE_CUDA})")
 
 EXPERIMENTS_PATH = Path("/lustrehome/robertobarile/grainsack/experiments")
 

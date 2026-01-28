@@ -22,7 +22,7 @@ from pykeen.evaluation import RankBasedEvaluator
 from pykeen.hpo import hpo_pipeline
 from pykeen.pipeline import pipeline
 
-from grainsack import logger
+from grainsack import logger, DEVICE, USE_CUDA
 from grainsack.evaluate import run_evaluate
 from grainsack.explain import build_combinatorial_optimization_explainer, run_explain
 from grainsack.kg import KG
@@ -50,7 +50,8 @@ def set_seeds(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
     random.seed(seed)
-    torch.cuda.set_rng_state(torch.cuda.get_rng_state())
+    if torch.cuda.is_available():
+        torch.cuda.set_rng_state(torch.cuda.get_rng_state())
 
 
 @click.group()
@@ -156,12 +157,12 @@ def rank(kg_name, kge_model_path, kge_config_path, output_path):
 
     kge_model = load_kge_model(kge_model_path, kge_config, kg)
     kge_model.eval()
-    kge_model.cuda()
+    kge_model.to(DEVICE)
 
     evaluator = RankBasedEvaluator(clear_on_finalize=False)
-    mapped_triples = kg.testing.mapped_triples.cuda()
-    filter_triples = [kg.training.mapped_triples.cuda(
-    ), kg.validation.mapped_triples.cuda()]
+    mapped_triples = kg.testing.mapped_triples.to(DEVICE)
+    filter_triples = [kg.training.mapped_triples.to(DEVICE),
+                      kg.validation.mapped_triples.to(DEVICE)]
     evaluator.evaluate(kge_model, mapped_triples, batch_size=16356,
                        additional_filter_triples=filter_triples)
 
@@ -235,7 +236,7 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
     logger.info("Loading KGE model...")
     kge_model = load_kge_model(kge_model_path, kge_config, kg)
     kge_model.eval()
-    kge_model.cuda()
+    kge_model.to(DEVICE)
 
     logger.info("Reading predictions")
     with open(predictions_path, "r", encoding="utf-8") as predictions:
@@ -286,7 +287,7 @@ def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, output
     logger.info("Loading KGE model...")
     kge_model = load_kge_model(kge_model_path, kge_config, kg)
     kge_model.eval()
-    kge_model.cuda()
+    kge_model.to(DEVICE)
 
     evaluations = run_evaluate(explanations, kg_name, True, kg, kge_model)
 

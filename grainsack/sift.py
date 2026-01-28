@@ -3,6 +3,8 @@
 import networkx as nx
 import torch
 
+from grainsack import DEVICE
+
 from .kg import KG
 
 
@@ -168,4 +170,4 @@ def hypothesis(kg, summary, partition, prediction):
     mask_in_train = torch.isin(packed_triples, packed_train)
     triples = triples[~mask_in_train].to(triples.dtype)
 
-    return triples.cuda()
+    return triples.to(DEVICE)

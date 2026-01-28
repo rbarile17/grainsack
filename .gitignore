@@ -163,8 +163,6 @@ cython_debug/
 
 *.out
 
-/experiments_a/
-/experiments_b/
 /experiments/
 
 
@@ -180,3 +178,5 @@ tmp
 
 pellet/
 Konclude/
+
+huggingface

@@ -2,7 +2,7 @@
 
 import torch
 
-from grainsack import CONVE
+from grainsack import CONVE, DEVICE
 from grainsack.kge_lp import MODEL_REGISTRY, rank, train_kge_model
 
 
@@ -27,7 +27,7 @@ def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, o
 
     n = statements.size(0)
 
-    mimics = torch.arange(n).cuda() + kg.num_entities
+    mimics = torch.arange(n).to(DEVICE) + kg.num_entities
 
     triples = kg.training_triples.clone()
 
@@ -48,7 +48,7 @@ def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, o
     mimic_model_class = MODEL_REGISTRY[kge_model._get_name()]["kelpie_class"]
 
     base_model = mimic_model_class(
-        kg.training, kge_model, kge_config["model_kwargs"], n).cuda()
+        kg.training, kge_model, kge_config["model_kwargs"], n).to(DEVICE)
     train_kge_model(base_model, mimic_triples, **kge_config)
     base_ranks = rank(base_model, mimic_prediction, filtr=[mimic_triples])
 
@@ -61,7 +61,7 @@ def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, o
             else:
                 mapped_stmt.extend([(s, p, o) for s in partition[i]
                                    for o in partition[j]])
-        mapped_stmts.append(torch.tensor(mapped_stmt).cuda())
+        mapped_stmts.append(torch.tensor(mapped_stmt).to(DEVICE))
 
     masks = [(s.unsqueeze(1) == original_statements).all(
         dim=-1).any(dim=1) for s in mapped_stmts]
@@ -85,10 +85,10 @@ def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, o
         raise ValueError(f"Unknown operation: {operation}")
 
     if mimic_triples.size(0) == 0:
-        return torch.zeros(n).cuda()
+        return torch.zeros(n).to(DEVICE)
 
     pt_model = mimic_model_class(
-        kg.training, kge_model, kge_config["model_kwargs"], n).cuda()
+        kg.training, kge_model, kge_config["model_kwargs"], n).to(DEVICE)
     train_kge_model(pt_model, mimic_triples, **kge_config)
     pt_ranks = rank(pt_model, mimic_prediction, filtr=[mimic_triples])
 
@@ -115,7 +115,7 @@ def dp_relevance(model, lr, prediction, statements, lambd=1):
 
     n_statements = statements.size(0)
 
-    model.cuda()
+    model.to(DEVICE)
     model.eval()
 
     lhs = model.entity_representations[0](prediction[0]).detach()
@@ -195,7 +195,7 @@ def criage_relevance(kg, model, prediction, statements):
         H = H + lam * torch.eye(d, device=H.device, dtype=H.dtype)
         return H
 
-    model.cuda()
+    model.to(DEVICE)
     model.eval()
 
     n_statements = statements.size(0)
@@ -252,7 +252,7 @@ def criage_relevance(kg, model, prediction, statements):
     if relevance_tail.dtype == torch.complex64 or relevance_tail.dtype == torch.complex128:
         relevance_tail = torch.abs(relevance_tail)
 
-    relevance = torch.zeros(n_statements).cuda()
+    relevance = torch.zeros(n_statements).to(DEVICE)
     relevance[subject_mask] = relevance_head
     relevance[object_mask] = relevance_tail
 
