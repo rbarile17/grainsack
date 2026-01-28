@@ -27,7 +27,7 @@ def fitness(nx_kg, prediction, triple):
         return 1e6
 
 
-def topology_sift(kg, prediction, triples, k: int = 5):
+def topology_sift(kg, prediction, triples, k: int = 10):
     """Get the KG triples featuring the subject of the prediction and having the highest fitness."""
     return torch.vstack(sorted(triples, key=lambda x: fitness(kg.nx_graph, prediction, x))[:k])
 
