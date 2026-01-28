@@ -9,10 +9,10 @@ import time
 import torch
 from tqdm import tqdm
 
-from . import BISIMULATION, CRIAGE, DATA_POISONING, KELPIE, SIMULATION, IMAGINE
+from . import CRIAGE, DATA_POISONING, KELPIE, SIMULATION, IMAGINE
 from .relevance import criage_relevance, dp_relevance, estimate_rank_variation
 from .sift import criage_sift, topology_sift, get_statements, hypothesis
-from .summarize import bisimulation_summary, simulation_summary
+from .summarize import simulation_summary
 
 
 def run_explain(predictions, kg, kge_model, kge_config, lpx_config, build_explainer):
@@ -74,8 +74,6 @@ def build_combinatorial_optimization_explainer(kg, kge_model, kge_config, lpx_co
 
         if summarization == SIMULATION:
             summarize_partial = partial(simulation_summary, kg)
-        elif summarization == BISIMULATION:
-            summarize_partial = partial(bisimulation_summary, kg)
         else:
             summarize_partial = lambda x: (x, [])
     elif method == KELPIE:
@@ -83,8 +81,6 @@ def build_combinatorial_optimization_explainer(kg, kge_model, kge_config, lpx_co
         max_length = 2
         if summarization == SIMULATION:
             summarize_partial = partial(simulation_summary, kg)
-        elif summarization == BISIMULATION:
-            summarize_partial = partial(bisimulation_summary, kg)
         else:
             summarize_partial = lambda x: (x, [])
 

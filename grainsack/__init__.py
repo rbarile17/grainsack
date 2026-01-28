@@ -30,4 +30,3 @@ KELPIEPP = "kelpie++"
 IMAGINE = "imagine"
 
 SIMULATION = "simulation"
-BISIMULATION = "bisimulation"
