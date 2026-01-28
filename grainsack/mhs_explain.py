@@ -1,12 +1,10 @@
 from functools import partial
 import heapq
 import itertools
-import json
 import torch
 import os
-from pathlib import Path
 import subprocess
-from time import time
+from time import time, strftime
 import uuid
 
 from grainsack.kge_lp import complex_cosine_similarity
@@ -21,7 +19,7 @@ SHM = "/dev/shm"
 
 
 def mhs_explain_factory(kg, kge_model, kge_config, lpx_config):
-    return partial(mhs_explain, kg, kge_model)
+    return partial(mhs_explain, kg, kge_model, k=2)
 
 
 def negate_assertion(s, p, o):
@@ -71,15 +69,12 @@ def consistent(kg, addition):
     start_serialization = time()
     temp_file_name = f"konclude_{uuid.uuid4().hex}"
     temp_file_xml = f"{SHM}/{temp_file_name}.xml"
-    temp_file_owl = f"{SHM}/{temp_file_name}.owl"
 
     kgp = Graph()
     kgp.addN((s, p, o, kgp) for (s, p, o) in kg)
     kgp.addN((s, p, o, kgp) for (s, p, o) in addition)
 
     kgp.serialize(destination=temp_file_xml, format="xml")
-
-    # subprocess.run(["robot", "convert", "-f", "owl", "-i", temp_file_xml, "-o", temp_file_owl])
 
     end_serialization = time()
 
@@ -90,15 +85,14 @@ def consistent(kg, addition):
     output = result.stdout
     end_reasoning = time()
 
-    # print(f"Serialization: {end_serialization - start_serialization:.2f}s, Reasoning: {end_reasoning - start_reasoning:.2f}s")
+    print(f"Serialization: {end_serialization - start_serialization:.2f}s, Reasoning: {end_reasoning - start_reasoning:.2f}s")
 
     os.remove(temp_file_xml)
-    # os.remove(temp_file_owl)
 
     return "is consistent" in output.lower()
 
 
-def get_abducibles(kg, prediction, kge_model):
+def get_abducibles(kg, prediction, kge_model, k):
     abd_inds = set()
     abd_preds = set()
 
@@ -111,13 +105,15 @@ def get_abducibles(kg, prediction, kge_model):
     inds = set(kg.rdf_kg.subjects(RDF.type, OWL.NamedIndividual))
     inds_id = {int(kg.entity_to_id[str(i)]) for i in inds if str(i) in kg.entity_to_id}
 
-    s_ = kge_model.entity_representations[0](torch.tensor(kg.entity_to_id[str(prediction[0])]).cuda()).detach()
-    p_ = kge_model.relation_representations[0](torch.tensor(kg.relation_to_id[str(prediction[1])]).cuda()).detach()
-    o_ = kge_model.entity_representations[0](torch.tensor(kg.entity_to_id[str(prediction[2])]).cuda()).detach()
+    s_ = kge_model.entity_representations[0](torch.tensor(kg.entity_to_id[str(prediction[0])], dtype=torch.long).cuda()).detach()
+    p_ = kge_model.relation_representations[0](
+        torch.tensor(kg.relation_to_id[str(prediction[1])], dtype=torch.long).cuda()
+    ).detach()
+    o_ = kge_model.entity_representations[0](torch.tensor(kg.entity_to_id[str(prediction[2])], dtype=torch.long).cuda()).detach()
 
-    inds_ = kge_model.entity_representations[0](torch.tensor(list(inds_id)).cuda()).detach()
-    obj_props_ = kge_model.relation_representations[0](torch.tensor(list(obj_props_id)).cuda()).detach()
-    classes_ = kge_model.entity_representations[0](torch.tensor(list(classes_id)).cuda()).detach()
+    inds_ = kge_model.entity_representations[0](torch.tensor(list(inds_id), dtype=torch.long).cuda()).detach()
+    obj_props_ = kge_model.relation_representations[0](torch.tensor(list(obj_props_id), dtype=torch.long).cuda()).detach()
+    classes_ = kge_model.entity_representations[0](torch.tensor(list(classes_id), dtype=torch.long).cuda()).detach()
 
     if inds_.dtype == torch.cfloat:
         s_sim_inds = complex_cosine_similarity(s_.unsqueeze(0), inds_, dim=1)
@@ -147,17 +143,16 @@ def get_abducibles(kg, prediction, kge_model):
     for ind in abd_inds:
         added_ca = 0
         for idx in torch.argsort(sim_classes, descending=True):
-            if added_ca > 5:
+            if added_ca > k:
                 break
             class_id = list(classes_id)[idx.item()]
             class_uri = URIRef(kg.id_to_entity[class_id])
-            if ((ind, RDF.type, class_uri) != prediction and (ind, RDF.type, class_uri) not in kg.rdf_kg):
+            if (ind, RDF.type, class_uri) != prediction and (ind, RDF.type, class_uri) not in kg.rdf_kg:
                 class_assertions.add((ind, RDF.type, class_uri))
                 added_ca += 1
 
     for idx in topk_preds_indices:
         abd_preds.add(URIRef(kg.id_to_relation[idx.item()]))
-
 
     objprop_assertions = set()
     for s in abd_inds:
@@ -166,7 +161,7 @@ def get_abducibles(kg, prediction, kge_model):
                 continue
             added_a = 0
             for idx in torch.argsort(p_sim, descending=True):
-                if added_a > 5:
+                if added_a > k:
                     break
                 obj_prop_id = list(obj_props_id)[idx.item()]
                 obj_prop_uri = URIRef(kg.id_to_relation[obj_prop_id])
@@ -257,7 +252,7 @@ def get_solutions(kg, not_observation, abducibles, max_depth=2):
             push_path(path | {e})
 
 
-def justification(kg, addition):
+def get_justification(kg, addition):
     temp_file_name = f"robot_{uuid.uuid4().hex}"
     temp_file_xml = f"{SHM}/{temp_file_name}.xml"
 
@@ -267,18 +262,44 @@ def justification(kg, addition):
 
     kgp.serialize(destination=temp_file_xml, format="xml")
 
-    subprocess.run(["java", "-jar", "-Xms1g", "-Xmx256g", "/leonardo_work/IscrC_MINA/roberto/research/robot/robot.jar", "explain", "--input", temp_file_xml, "--reasoner", "HermiT", "-M", "inconsistency", "--explanation", "inconsistency.md"])
+    inconsistency_file_name = f"inconsistency_{uuid.uuid4().hex}.md"
+
+    subprocess.run(
+        [
+            "java",
+            "-jar",
+            "-Xms1g",
+            "-Xmx128g",
+            "/leonardo_work/IscrC_MINA/roberto/research/robot/robot.jar",
+            "explain",
+            "--input",
+            temp_file_xml,
+            "--reasoner",
+            "jfact",
+            "-M",
+            "inconsistency",
+            "-m",
+            "1",
+            "--explanation",
+            inconsistency_file_name,
+        ]
+    )
 
     # read the content of inconsistency.md
-    with open("inconsistency.md", "r", encoding="utf-8") as
-        explanation = f.read()
+    try:
+        with open(inconsistency_file_name, "r", encoding="utf-8") as f:
+            explanation = f.read()
+        os.remove(inconsistency_file_name)
+    except FileNotFoundError as e:
+        explanation = "No justification found."
+        print("Justification file not found:", e)
 
     os.remove(temp_file_xml)
-    os.remove("inconsistency.md")
 
     return explanation
 
-def mhs_explain(kg, kge_model, prediction):
+
+def mhs_explain(kg, kge_model, prediction, k=5):
 
     # kg.parse(dataset / "arco.owl")
     # kg.parse("family2.owl")
@@ -296,14 +317,27 @@ def mhs_explain(kg, kge_model, prediction):
     # )
 
     prediction = (URIRef(prediction[0]), URIRef(prediction[1]), URIRef(prediction[2]))
-    abducibles = get_abducibles(kg, prediction, kge_model) - {prediction}
+    print("Getting abducibles...", strftime("%H:%M:%S"))
+    abducibles = get_abducibles(kg, prediction, kge_model, k) - {prediction}
+    print(f"Number of abducibles: {len(abducibles)}", strftime("%H:%M:%S"))
     kg = set(kg.rdf_kg.triples((None, None, None)))
     not_observation = negate_assertion(*prediction)
+
+    print("Searching for solution...", strftime("%H:%M:%S"))
     solution = get_solutions(kg, not_observation, abducibles)
 
     if solution is None:
         return [[]]
 
-    justification = justification(kg, solution | not_observation)
+    print(f"Solution found with {len(solution)} assertions.", strftime("%H:%M:%S"))
+
+    print("Getting justification...", strftime("%H:%M:%S"))
+    justification = get_justification(kg, solution | not_observation)
+    print("Justification obtained.", strftime("%H:%M:%S"))
+
+    print("\n\n\n\n****JUSTIFICATION****")
+    print(justification)
+    print("\n\n\n\n****END JUSTIFICATION****")
+
 
     return [justification]

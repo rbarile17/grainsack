@@ -163,7 +163,10 @@ cython_debug/
 
 *.out
 
+/experiments_a/
+/experiments_b/
 /experiments/
+
 
 /unsloth_compiled_cache/
 
@@ -174,3 +177,6 @@ Meta-Llama-3.1-8B-Instruct
 Meta-Llama-3.1-70B-Instruct
 
 tmp
+
+pellet/
+Konclude/

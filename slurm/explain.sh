@@ -16,7 +16,7 @@ lpx_config=$5
 output_path=$6
 log_path=$7
 
-python -m grainsack.operations explain \
+python -u -m grainsack.operations explain \
     --predictions_path $predictions_path \
     --kg_name $kg_name \
     --kge_model_path $kge_model_path \

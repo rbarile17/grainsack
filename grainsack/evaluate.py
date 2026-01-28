@@ -19,6 +19,7 @@ Perform a Link Prediction task, given a query as an incomplete triple (subject, 
 Strict requirement: output solely the name of a single object entity, discard any explanation or other text.
 Correct format: Elizabeth_of_Bohemia
 Incorrect format: The object entity is Elizabeth_of_Bohemia
+{ranking}
 """
 
 USER_PROMPT = """
@@ -33,7 +34,7 @@ Explanation:
 """
 
 
-def run_evaluate(explanations, kg_name):
+def run_evaluate(explanations, kg_name, ranking, kg, kge_model):
     """Evaluate the given explanations based on the given data, models, and config.
 
     Evaluate the given explanations (each associated to a prediction) according to the given evaluation config
@@ -43,7 +44,7 @@ def run_evaluate(explanations, kg_name):
     :type explanations: dict
     """
 
-    def format_prompt(explained_prediction, include_explanation=False):
+    def format_prompt(explained_prediction, include_explanation=False, ranking=None):
         subject, predicate, _ = explained_prediction["prediction"]
         subject = ind_labels.get(subject, subject.split("/")[-1])
         predicate = prop_labels[predicate]
@@ -62,7 +63,15 @@ def run_evaluate(explanations, kg_name):
         query = {"subject": subject, "predicate": predicate, "explanation": explanation}
         user_prompt = USER_PROMPT.format(**query)
 
-        prompt = [{"role": "system", "content": SYSTEM_PROMPT}] + [{"role": "user", "content": user_prompt}]
+        system_prompt = SYSTEM_PROMPT.format(
+            ranking=(
+                f"The entity name that you provide must be in the following list (|||| separated) of entity names: {ranking}"
+                if ranking is not None
+                else ""
+            )
+        )
+
+        prompt = [{"role": "system", "content": system_prompt}] + [{"role": "user", "content": user_prompt}]
 
         return prompt
 
@@ -84,13 +93,31 @@ def run_evaluate(explanations, kg_name):
     gts = [o for _, _, o in predictions]
     gts = [ind_labels.get(gt, gt.split("/")[-1]) for gt in gts]
 
+    if ranking:
+        predictions_tensor = torch.tensor(kg.id_triples(predictions))
+        object_scores = kge_model.predict_t(predictions_tensor)
+        rankings = torch.argsort(object_scores, dim=1, descending=True)
+        rankings = [
+            "||||".join([
+                ind_labels.get(kg.id_to_entity[ranking.item()], kg.id_to_entity[ranking.item()].split("/")[-1])
+                for ranking in rankings[i][:20]
+            ])
+            for i in range(len(predictions))
+        ]
+
     print("Running pre-explanation simulations...")
-    prompts = [format_prompt(explanations[i]) for i in range(len(predictions))]
+    prompts = [
+        format_prompt(explanations[i], ranking=rankings[i] if ranking else None)
+        for i in range(len(predictions))
+    ]
     simulations = pipe(prompts, max_new_tokens=64, use_cache=True, batch_size=8)
     simulations = [simulation[0]["generated_text"][-1]["content"] for simulation in simulations]
 
     print("Running post-explanation simulations...")
-    prompts = [format_prompt(explanations[i], include_explanation=True) for i in range(len(predictions))]
+    prompts = [
+        format_prompt(explanations[i], include_explanation=True, ranking=rankings[i] if ranking else None)
+        for i in range(len(predictions))
+    ]
     post_exp_simulations = pipe(prompts, max_new_tokens=64, use_cache=True, batch_size=8)
     post_exp_simulations = [simulation[0]["generated_text"][-1]["content"] for simulation in post_exp_simulations]
 

@@ -328,7 +328,7 @@ class Evaluate(luigi.Task):
     def slurm_params_as_args(self):
         """Convert parameters to command line arguments."""
 
-        args = [self.explanations_path, self.kg_name, self.output_path, self.log_path]
+        args = [self.explanations_path, self.kg_name, self.kge_model_path, self.kge_config_path, self.output_path, self.log_path]
         return args
 
     def run(self):

@@ -39,9 +39,9 @@ def get_statements(kg, prediction):
 
 
 def hypothesis(kg, summary, partition, prediction):
-    e = prediction[0].cpu()
-    summary = summary.cpu()
-    partition = [p.cpu() for p in partition]
+    e = prediction[0]
+    summary = summary
+    partition = [p for p in partition]
 
     qe = next(i for i, t in enumerate(partition) if (t == e).any())
 
@@ -74,7 +74,7 @@ def hypothesis(kg, summary, partition, prediction):
 
     triples = torch.cat(blocks, dim=0)
 
-    triples = triples[(triples != prediction.cpu()).any(dim=1)]
+    triples = triples[(triples != prediction).any(dim=1)]
 
     train = kg.training_triples.to(triples.device)
 

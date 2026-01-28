@@ -18,7 +18,7 @@ from grainsack.kg import KG
 from grainsack.kge_lp import MODEL_REGISTRY
 from grainsack.utils import load_kge_model, read_json, write_json
 from grainsack.workflow import Comparison, Validation
-from grainsack.mhs_explain import mhs_explain, mhs_explain_factory
+from grainsack.mhs_explain import mhs_explain_factory
 
 
 def set_seeds(seed):
@@ -279,6 +279,7 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
     kge_model.eval()
     kge_model.cuda()
 
+    print(f"Reading predictions")
     with open(predictions_path, "r", encoding="utf-8") as predictions:
         predictions = [x.strip().split("\t") for x in predictions.readlines()]
 
@@ -303,8 +304,14 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
     help="The path to the explanations (each associated to a prediction) to be evaluated.",
 )
 @click.option("--kg_name", help="The name of the KG used for the explanations and to be used for the evaluation.")
+@click.option(
+    "--kge_model_path", type=click.Path(exists=True), help="The path to the KGE .pt model file used for the predictions."
+)
+@click.option(
+    "--kge_config_path", type=click.Path(exists=True), help="The path to the KGE .json config file used for the predictions."
+)
 @click.option("--output_path", type=click.Path(), default="evaluations.json", help="The path to save the evaluations.")
-def evaluate(explanations_path, kg_name, output_path):
+def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, output_path):
     """Evaluate the given explanations based on the given data, models, and config.
 
     Evaluate the given explanations (each associated to a prediction) according to the given evaluation config and possibly adopting the given KGE model and associated config.
@@ -312,15 +319,27 @@ def evaluate(explanations_path, kg_name, output_path):
     :param explanations_path: The path to the explanations (each associated to a prediction) to be evaluated.
     :type explanations_path: pathlib.Path
     :param kg_name: The name of the KG used for the explanations and to be used for the evaluation.
-    :type kg_name: str
+    :type kg_name: str``
     :param output_path: The path to save the evaluations.
     :type output_path: pathlib.Path
     """
     set_seeds(42)
 
+    ranking = True
+
     explanations = read_json(explanations_path)
 
-    evaluations = run_evaluate(explanations, kg_name)
+    kge_config = read_json(kge_config_path)
+
+    kg = KG(kg=kg_name, create_inverse_triples=kge_config["model"] == "ConvE")
+
+    print(f"Loading KGE model...")
+    kge_model = load_kge_model(kge_model_path, kge_config, kg)
+    kge_model.eval()
+    kge_model.cuda()
+
+    evaluations = run_evaluate(explanations, kg_name, True, kg, kge_model)
+
     write_json(evaluations, output_path)
 
 
