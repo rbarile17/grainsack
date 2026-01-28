@@ -1,39 +1,40 @@
 """This module implements the operation `explain`, the components involved
 and the function factory for building the explain function from the explanation config."""
 
+import time
 from functools import partial
 from itertools import combinations
 
-import time
-
 import torch
-from tqdm import tqdm
 
-from . import CRIAGE, DATA_POISONING, KELPIE, SIMULATION, IMAGINE
+from . import CRIAGE, DATA_POISONING, IMAGINE, KELPIE, SIMULATION
 from .relevance import criage_relevance, dp_relevance, estimate_rank_variation
-from .sift import criage_sift, topology_sift, get_statements, hypothesis
+from .sift import criage_sift, get_statements, hypothesis, topology_sift
 from .summarize import simulation_summary
+
+NO_SUMMARIZE = lambda x: (x, [])
 
 
 def run_explain(predictions, kg, kge_model, kge_config, lpx_config, build_explainer):
-    """Compute the explanations for the given predictions based on the given data, models, and config.
-
-    Compute the explanations for the given KG (predictions) using the statements in the other given KG,
-    based on the given KGE model and the associated hyperparameter config (used for making the predictions),
-    and according to the given explanation config.
-
-    :param predictions: The predictions to be explained.
-    :type predictions: list[tuple]
-    :param kg: The KG for explaining the predictions.
-    :type kg: KG
-    :param kge_model_path: The path to the KGE .pt model file to be possibly used (depending on the explanation method) for explaining the predictions.
-    :type kge_model_path: pathlib.Path
-    :param kge_config_path: The path to the KGE .json config file to be possibly used (depending on the explanation method) for explaining the predictions.
-    :type kge_config_path: pathlib.Path
-    :param lpx_config: The explanation config dict. It should contain the method and the parameters for the explanation method.
-    :type lpx_config: dict
-    :return: The list of explanations each as a tensor of triples.
-    :rtype: list
+    """Generate explanations for multiple predictions.
+    
+    Computes explanations for given predictions using the specified KG, KGE model,
+    and explanation method configured through the factory function.
+    
+    Args:
+        predictions (list): List of prediction triples to explain.
+        kg (KG): Knowledge graph for generating explanations.
+        kge_model: Trained KGE model for relevance computation.
+        kge_config (dict): Configuration dictionary for the KGE model.
+        lpx_config (dict): Explanation method configuration containing 'method'
+            and method-specific parameters.
+        build_explainer (callable): Factory function that builds the explanation
+            function from kg, kge_model, kge_config, and lpx_config.
+            
+    Returns:
+        tuple: (explanations, times) where:
+            - explanations (list): List of explanation tensors, one per prediction.
+            - times (list): Computation time in seconds for each explanation.
     """
     explain_partial = build_explainer(kg, kge_model, kge_config, lpx_config)
 
@@ -52,82 +53,124 @@ def run_explain(predictions, kg, kge_model, kge_config, lpx_config, build_explai
 
 
 def build_combinatorial_optimization_explainer(kg, kge_model, kge_config, lpx_config):
-    """Function factory building the explanation method from the explanation config."""
+    """Factory function that builds an explanation method from configuration.
+    
+    Creates a configured explanation function based on the specified method
+    (KELPIE, IMAGINE, CRIAGE, or DATA_POISONING). Each method combines different
+    components for statement extraction, filtering, summarization, and relevance
+    computation.
+    
+    Args:
+        kg (KG): Knowledge graph for explanation generation.
+        kge_model: Trained KGE model for relevance computation.
+        kge_config (dict): KGE model configuration including hyperparameters.
+        lpx_config (dict): Explanation configuration with keys:
+            - 'method' (str): One of KELPIE, IMAGINE, CRIAGE, DATA_POISONING.
+            - 'summarization' (str): Summarization strategy (e.g., SIMULATION).
+            
+    Returns:
+        callable: Configured explanation function that takes a prediction and
+            returns explanation triples.
+            
+    Raises:
+        ValueError: If the specified method is not supported.
+    """
 
     method = lpx_config["method"]
     summarization = lpx_config["summarization"]
 
-    operation = None
+    def get_summarize_fn():
+        return partial(simulation_summary, kg) if summarization == SIMULATION else NO_SUMMARIZE
+
+    configs = {
+        IMAGINE: {
+            "max_length": 2,
+            "operation": "add",
+            "kelpie": True,
+            "setup": simulation_summary(kg, kg.training_triples),
+        },
+        KELPIE: {
+            "max_length": 2,
+            "operation": "remove",
+            "kelpie": True,
+            "get_statements": partial(get_statements, kg),
+            "sift": partial(topology_sift, kg),
+            "relevance": partial(estimate_rank_variation, kg, kge_model, kge_config),
+        },
+        CRIAGE: {
+            "max_length": 1,
+            "operation": None,
+            "kelpie": False,
+            "get_statements": partial(criage_sift, kg),
+            "sift": lambda x, y: y,
+            "relevance": partial(criage_relevance, kg, kge_model),
+            "summarize": NO_SUMMARIZE,
+        },
+        DATA_POISONING: {
+            "max_length": 1,
+            "operation": None,
+            "kelpie": False,
+            "get_statements": partial(get_statements, kg),
+            "sift": partial(topology_sift, kg),
+            "relevance": partial(dp_relevance, kge_model, kge_config["optimizer_kwargs"]["lr"]),
+            "summarize": NO_SUMMARIZE,
+        },
+    }
+
+    if method not in configs:
+        raise ValueError(f"Unknown method: {method}")
+
+    config = configs[method]
 
     if method == IMAGINE:
-        max_length = 2
-        print("Computing simulation summary...", time.strftime("%H:%M:%S"))
-        summary, partition = simulation_summary(kg, kg.training_triples)
-
-        print("End simulation summary", time.strftime("%H:%M:%S"))
-
+        summary, partition = config["setup"]
         get_statements_partial = partial(hypothesis, kg, summary, partition)
         sift_partial = partial(topology_sift, kg)
         relevance_partial = partial(estimate_rank_variation, kg, kge_model, kge_config)
-
-        operation = "add"
-
-        if summarization == SIMULATION:
-            summarize_partial = partial(simulation_summary, kg)
-        else:
-            summarize_partial = lambda x: (x, [])
-    elif method == KELPIE:
-        operation = "remove"
-        max_length = 2
-        if summarization == SIMULATION:
-            summarize_partial = partial(simulation_summary, kg)
-        else:
-            summarize_partial = lambda x: (x, [])
-
-        get_statements_partial = partial(get_statements, kg)
-        sift_partial = partial(topology_sift, kg)
-        relevance_partial = partial(estimate_rank_variation, kg, kge_model, kge_config)
-    elif method == CRIAGE:
-        summarize_partial = lambda x: (x, [])
-        get_statements_partial = partial(criage_sift, kg)
-        sift_partial = lambda x, y: y
-        relevance_partial = partial(criage_relevance, kg, kge_model)
-        max_length = 1
-    elif method == DATA_POISONING:
-        summarize_partial = lambda x: (x, [])
-        get_statements_partial = partial(get_statements, kg)
-        sift_partial = partial(topology_sift, kg)
-        relevance_partial = partial(dp_relevance, kge_model, kge_config["optimizer_kwargs"]["lr"])
-        max_length = 1
+        summarize_partial = get_summarize_fn()
     else:
-        raise ValueError(f"Unknown method: {method}")
+        get_statements_partial = config["get_statements"]
+        sift_partial = config["sift"]
+        relevance_partial = config["relevance"]
+        summarize_partial = config.get("summarize", get_summarize_fn())
 
-    explain_partial = partial(
+    return partial(
         run_combinatorial_optimization,
         kg,
         relevance_partial,
         get_statements_partial,
         sift_partial,
         summarize_partial,
-        max_length=max_length,
-        kelpie=(method in [KELPIE, IMAGINE]),
-        operation=operation,
+        max_length=config["max_length"],
+        kelpie=config["kelpie"],
+        operation=config["operation"],
     )
-    return explain_partial
 
 
 def run_combinatorial_optimization(
     kg, relevance, get_statements, sift, summarize, prediction, max_length=2, kelpie=True, operation=None
 ):
-    """Explain the prediction via combinatorial optimization.
-
-    Select the most relevant statements related to the prediction.
-
-    :param relevance: function computing the relevance of each statement with respect to the prediction.
-    :param get_statements: function to retrieve the statements related to the prediction.
-    :param prediction: the prediction to be explained.
-    :type prediction: torch.Tensor
-    :param max_explanation_length: the maximum number of statements in the explanation.
+    """Explain a prediction via combinatorial optimization over candidate statements.
+    
+    Generates an explanation by: (1) extracting candidate statements related to
+    the prediction, (2) filtering/sifting for relevant statements, (3) optionally
+    summarizing, (4) evaluating combinations up to max_length, and (5) selecting
+    the combination with highest relevance score.
+    
+    Args:
+        kg (KG): Knowledge graph.
+        relevance (callable): Function computing relevance scores for statement combinations.
+        get_statements (callable): Function extracting candidate statements for a prediction.
+        sift (callable): Function filtering statements based on topology/relevance.
+        summarize (callable): Function summarizing statements, returns (statements, partition).
+        prediction: Prediction triple to explain.
+        max_length (int, optional): Maximum number of statements in explanation. Defaults to 2.
+        kelpie (bool, optional): Whether to use Kelpie-style relevance computation. Defaults to True.
+        operation (str, optional): Operation for relevance ('add' or 'remove'). Defaults to None.
+        
+    Returns:
+        list: Single-element list containing the best explanation as a tensor of triples,
+            or [[]] if no explanation is found or an error occurs.
     """
     try:
         print("Explaining prediction:", prediction)

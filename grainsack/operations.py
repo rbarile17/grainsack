@@ -1,4 +1,14 @@
-"""This module defines the command-line interface (CLI) for the grainsack package."""
+"""Command-line interface for the GRAINSACK knowledge graph explanation benchmark.
+
+Provides commands for the complete KGE model and explanation workflow:
+- tune: Hyperparameter optimization for KGE models
+- train: Model training with early stopping
+- rank: Prediction ranking on test triples
+- select_predictions: Sample top predictions for explanation
+- explain: Generate explanations using various methods
+- evaluate: Evaluate explanation quality
+- comparison: Run complete benchmarking workflow
+"""
 
 import json
 import random
@@ -9,20 +19,32 @@ import numpy as np
 import pandas as pd
 import torch
 from pykeen.evaluation import RankBasedEvaluator
-from pykeen.hpo import hpo_pipeline
-from pykeen.pipeline import pipeline
+from pykeen.pipeline import hpo_pipeline, pipeline
 
+from grainsack import EXPERIMENTS_PATH
 from grainsack.evaluate import run_evaluate
 from grainsack.explain import build_combinatorial_optimization_explainer, run_explain
 from grainsack.kg import KG
 from grainsack.kge_lp import MODEL_REGISTRY
-from grainsack.utils import load_kge_model, read_json, write_json
-from grainsack.workflow import Comparison, Validation
 from grainsack.mhs_explain import mhs_explain_factory
+from grainsack.utils import load_kge_model, read_json, write_json
+from grainsack.workflow import Comparison
+
+HELP_KG_NAME = "Knowledge graph name (e.g., 'ARCO25-5-MATERIALIZE', 'ATRAVEL-MATERIALIZE')."
+HELP_KGE_MODEL_PATH = "Path to trained KGE model weights (.pt file)."
+HELP_KGE_CONFIG_PATH = "Path to KGE model configuration (.json file with hyperparameters)."
+HELP_OUTPUT_PATH = "Path where output file will be saved."
 
 
 def set_seeds(seed):
-    """Set the random seed for reproducibility."""
+    """Set random seeds for reproducible results across libraries.
+    
+    Configures random number generators for NumPy, PyTorch (CPU and CUDA),
+    and Python's random module to ensure deterministic behavior.
+    
+    Args:
+        seed (int): Random seed value to use across all libraries.
+    """
     torch.backends.cudnn.deterministic = True
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -32,36 +54,22 @@ def set_seeds(seed):
 
 @click.group()
 def cli():
-    """Unified grainsack CLI."""
+    """GRAINSACK CLI entry point."""
 
 
 @cli.command(
-    help=(
-        "Select for the KGE model specified in the given config the best hyperparameter config based on the performance on the given KG. "
-        "Save the config to a .json file."
-    )
+    help="Perform hyperparameter optimization for a KGE model on a knowledge graph."
 )
-@click.option("--kg_name", help="The name of the KG.")
-@click.option("--kge_model_name", help="The name of the KGE model to tune.")
+@click.option("--kg_name", required=True, help=HELP_KG_NAME)
+@click.option("--kge_model_name", required=True, help="KGE model architecture (e.g., 'TransE', 'ComplEx', 'ConvE').")
 @click.option(
-    "--output_path", type=click.Path(), default="kge_config.json", help="The path to save the best hyperparameter config."
+    "--output_path", type=click.Path(), default="kge_config.json", help="Path to save optimized hyperparameter configuration."
 )
 def tune(kg_name, kge_model_name, output_path):
-    """Perform hyperparameter tuning.
-
-    Select for the KGE model specified in the given config the best hyperparameter config based on the performance on the given KG.
-    Save the config to a .json file.
-
-    :param kg_name: The name of the KG to be used for assessing the performance of the possible hyperparameter configs.
-    :type kg_name: str
-    :param kge_model_name: The name of the KGE model to select the hyperparameter config for.
-    :type kge_model_name: str
-    :param output_path: The path to save the best hyperparameter config.
-    :type output_path: pathlib.Path
-    :return: None
-    :rtype: None
-    """
+    """Hyperparameter optimization for KGE models."""
     set_seeds(42)
+
+    print(EXPERIMENTS_PATH)
 
     kg = KG(kg_name, create_inverse_triples=kge_model_name == "ConvE")
 
@@ -93,29 +101,13 @@ def tune(kg_name, kge_model_name, output_path):
 
 
 @cli.command(
-    help=(
-        "Train on the given KG the KGE model specified in the given config along with the hyperparameters. "
-        "Save the model parameters to a .pt file."
-    )
+    help="Train a KGE model on a knowledge graph with early stopping."
 )
-@click.option("--kg_name", help="The name of the KG to train on.")
-@click.option("--kge_config_path", type=click.Path(exists=True), help="The path to the KGE config file.")
-@click.option("--output_path", type=click.Path(), default="kge_model.pt", help="The path to save the trained KGE model.")
+@click.option("--kg_name", required=True, help=HELP_KG_NAME)
+@click.option("--kge_config_path", type=click.Path(exists=True), required=True, help=HELP_KGE_CONFIG_PATH)
+@click.option("--output_path", type=click.Path(), default="kge_model.pt", help="Path to save trained model weights.")
 def train(kg_name, kge_config_path, output_path):
-    """Train on the given KG the given KGE model.
-
-    Train on the given KG the KGE model specified in the given config along with the hyperparameters.
-    Save the model parameters to a .pt file.
-
-    :param kg_name: The name of the KG to train on.
-    :type kg_name: str
-    :param kge_config_path: The path to the KGE config file.
-    :type kge_config_path: pathlib.Path
-    :param output_path: The path to save the trained KGE model.
-    :type output_path: pathlib.Path
-    :return: None
-    :rtype: None
-    """
+    """Train KGE model with early stopping."""
     set_seeds(42)
 
     config = read_json(kge_config_path)
@@ -137,29 +129,14 @@ def train(kg_name, kge_config_path, output_path):
 
 
 @cli.command(
-    help="Compute the rank of each triple in the given KG via the given KGE model. Save the ranked triples to a .csv file."
+    help="Rank test triples using a trained KGE model (filtered setting)."
 )
-@click.option("--kg_name", help="The name of the KG to compute the ranks for.")
-@click.option("--kge_model_path", type=click.Path(exists=True), help="The path to the KGE .pt model file.")
-@click.option("--kge_config_path", type=click.Path(exists=True), help="The path to the KGE .json config file.")
-@click.option("--output_path", type=click.Path(), default="predictions.csv", help="The path to save the predictions with ranks.")
+@click.option("--kg_name", required=True, help=HELP_KG_NAME)
+@click.option("--kge_model_path", type=click.Path(exists=True), required=True, help=HELP_KGE_MODEL_PATH)
+@click.option("--kge_config_path", type=click.Path(exists=True), required=True, help=HELP_KGE_CONFIG_PATH)
+@click.option("--output_path", type=click.Path(), default="predictions.csv", help="Path to save ranked predictions CSV (columns: s, p, o, rank).")
 def rank(kg_name, kge_model_path, kge_config_path, output_path):
-    """Compute the rank of the given triples.
-
-    Compute the rank of each triple in the given KG via the given KGE model instantiated according to the given KGE config.
-    Save the ranked predictions to a .csv file.
-
-    :param kg_name: The name of the KG to compute the ranks for.
-    :type kg_name: str
-    :param kge_model_path: The path to the KGE .pt model file.
-    :type kge_model_path: pathlib.Path
-    :param kge_config_path: The path to the KGE .json config file.
-    :type kge_config_path: pathlib.Path
-    :param output_path: The path to save the predictions with ranks.
-    :type output_path: pathlib.Path
-    :return: None
-    :rtype: None
-    """
+    """Rank test triples using trained KGE model (filtered setting)."""
     set_seeds(42)
 
     kge_config = read_json(kge_config_path)
@@ -171,8 +148,7 @@ def rank(kg_name, kge_model_path, kge_config_path, output_path):
     kge_model.cuda()
 
     evaluator = RankBasedEvaluator(clear_on_finalize=False)
-    mapped_triples = kg.testing.mapped_triples
-    mapped_triples = mapped_triples.cuda()
+    mapped_triples = kg.testing.mapped_triples.cuda()
     filter_triples = [kg.training.mapped_triples.cuda(), kg.validation.mapped_triples.cuda()]
     evaluator.evaluate(kge_model, mapped_triples, batch_size=16356, additional_filter_triples=filter_triples)
 
@@ -183,23 +159,13 @@ def rank(kg_name, kge_model_path, kge_config_path, output_path):
     output.to_csv(output_path, index=False, sep=";")
 
 
-@cli.command(help="Select the top ranked triples from the given triples. Save the selected triples to a .csv file.")
-@click.option("--predictions_path", type=click.Path(exists=True), help="The path to the ranked triples.")
+@cli.command(help="Sample top-ranked predictions (rank=1) for explanation experiments.")
+@click.option("--predictions_path", type=click.Path(exists=True), required=True, help="Path to CSV file with ranked predictions.")
 @click.option(
-    "--output_path", type=click.Path(), default="selected_predictions.csv", help="The path to save the selected triples."
+    "--output_path", type=click.Path(), default="selected_predictions.csv", help="Path to save sampled predictions (up to 100 triples)."
 )
 def select_predictions(predictions_path, output_path):
-    """Select the top ranked triples from the given triples.
-
-    Save the selected triples to a .csv file.
-
-    :param predictions_path: The path to the ranked triples.
-    :type predictions_path: pathlib.Path
-    :param output_path: The path to save the selected triples.
-    :type output_path: pathlib.Path
-    :return: None
-    :rtype: None
-    """
+    """Sample top-ranked predictions (rank=1) for explanation."""
     predictions = pd.read_csv(predictions_path, sep=";")
 
     predictions = predictions[predictions["rank"] == 1]
@@ -213,62 +179,35 @@ def select_predictions(predictions_path, output_path):
 
 
 @cli.command(
-    help=(
-        "Compute the explanations for the given KG (predictions) using the statements in the other given KG, "
-        "based on the given KGE model and the associated hyperparameter config (used for making the predictions), and according to the given explanation config."
-        "Save the explanations to a .json file."
-    )
+    help="Generate explanations for link predictions using various explanation methods."
 )
-@click.option("--predictions_path", type=click.Path(exists=True), help="The path to the predictions to be explained.")
-@click.option("--kg_name", type=str, help="The name of the KG to be used for computing the explanations.")
+@click.option("--predictions_path", type=click.Path(exists=True), required=True, help="Path to TSV file with predictions to explain (tab-separated: s p o).")
+@click.option("--kg_name", type=str, required=True, help=HELP_KG_NAME)
 @click.option(
-    "--kge_model_path", type=click.Path(exists=True), help="The path to the KGE .pt model file used for the predictions."
+    "--kge_model_path", type=click.Path(exists=True), required=True, help=HELP_KGE_MODEL_PATH
 )
 @click.option(
-    "--kge_config_path", type=click.Path(exists=True), help="The path to the KGE .json config file used for the predictions."
+    "--kge_config_path", type=click.Path(exists=True), required=True, help=HELP_KGE_CONFIG_PATH
 )
 @click.option(
     "--lpx_config",
     type=str,
-    help="The explanation config as a JSON string. It should contain the method and the parameters for the explanation method.",
+    required=True,
+    help="Explanation method configuration as JSON string (must include 'method' key: KELPIE, IMAGINE, CRIAGE, DATA_POISONING, mhs_explain).",
 )
 @click.option(
     "--factory_name",
     type=str,
-    help="The name of the function building the explanation function from the explanation config.",
+    help="Explainer factory function name (for custom explanation methods).",
     default="build_combinatorial_optimization_explainer",
 )
-@click.option("--output_path", type=click.Path(), default="explanations.json", help="The path to save the explanations.")
+@click.option("--output_path", type=click.Path(), default="explanations.json", help="Path to save explanations JSON (includes predictions, explanations, and timings).")
 def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_config, output_path, factory_name):
-    """Compute the explanations for the given predictions based on the given data, models, and config.
-
-    Compute the explanations for the given KG (predictions) using the statements in the other given KG,
-    based on the given KGE model and the associated hyperparameter config (used for making the predictions), and according to the given explanation config.
-    Save the explanations to a .json file.
-
-    :param predictions_path: The path to the predictions to be explained.
-    :type predictions_path: pathlib.Path
-    :param kg_name: The name of the KG to be used for computing the explanations.
-    :type kg_name: str
-    :param kge_model_path: The path to the KGE .pt model file used for the predictions.
-    :type kge_model_path: pathlib.Path
-    :param kge_config_path: The path to the KGE .json config file used for the predictions.
-    :type kge_config_path: pathlib.Path
-    :param lpx_config: The explanation config as a JSON string. It should contain the method and the parameters for the explanation method.
-    :type lpx_config: str
-    :param output_path: The path to save the explanations.
-    :type output_path: pathlib.Path
-    :return: None
-    :rtype: None
-    """
+    """Generate explanations using KELPIE, IMAGINE, CRIAGE, or other methods."""
     set_seeds(42)
 
     lpx_config = json.loads(lpx_config)
-
-    if lpx_config["method"] == "mhs_explain":
-        factory = mhs_explain_factory
-    else:
-        factory = build_combinatorial_optimization_explainer
+    factory = mhs_explain_factory if lpx_config["method"] == "mhs_explain" else build_combinatorial_optimization_explainer
 
     kge_config = read_json(kge_config_path)
 
@@ -293,39 +232,25 @@ def explain(predictions_path, kg_name, kge_model_path, kge_config_path, lpx_conf
 
 
 @cli.command(
-    help=(
-        "Evaluate the given explanations (each associated to a prediction) according to the given"
-        "evaluation config and possibly adopting the given KGE model and associated config."
-    )
+    help="Evaluate explanation quality using the LP-DIXIT protocol."
 )
 @click.option(
     "--explanations_path",
     type=click.Path(exists=True),
-    help="The path to the explanations (each associated to a prediction) to be evaluated.",
+    required=True,
+    help="Path to JSON file with explanations to evaluate.",
 )
-@click.option("--kg_name", help="The name of the KG used for the explanations and to be used for the evaluation.")
+@click.option("--kg_name", required=True, help=HELP_KG_NAME)
 @click.option(
-    "--kge_model_path", type=click.Path(exists=True), help="The path to the KGE .pt model file used for the predictions."
+    "--kge_model_path", type=click.Path(exists=True), required=True, help=HELP_KGE_MODEL_PATH
 )
 @click.option(
-    "--kge_config_path", type=click.Path(exists=True), help="The path to the KGE .json config file used for the predictions."
+    "--kge_config_path", type=click.Path(exists=True), required=True, help=HELP_KGE_CONFIG_PATH
 )
-@click.option("--output_path", type=click.Path(), default="evaluations.json", help="The path to save the evaluations.")
+@click.option("--output_path", type=click.Path(), default="evaluations.json", help=HELP_OUTPUT_PATH)
 def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, output_path):
-    """Evaluate the given explanations based on the given data, models, and config.
-
-    Evaluate the given explanations (each associated to a prediction) according to the given evaluation config and possibly adopting the given KGE model and associated config.
-
-    :param explanations_path: The path to the explanations (each associated to a prediction) to be evaluated.
-    :type explanations_path: pathlib.Path
-    :param kg_name: The name of the KG used for the explanations and to be used for the evaluation.
-    :type kg_name: str``
-    :param output_path: The path to save the evaluations.
-    :type output_path: pathlib.Path
-    """
+    """Evaluate explanations using LP-DIXIT protocol."""
     set_seeds(42)
-
-    ranking = True
 
     explanations = read_json(explanations_path)
 
@@ -344,14 +269,8 @@ def evaluate(explanations_path, kg_name, kge_model_path, kge_config_path, output
 
 
 @cli.command()
-def validation():
-    """Run the validation workflow adopting the setup in validation_setup.csv."""
-    luigi.build([Validation()], local_scheduler=True)
-
-
-@cli.command()
 def comparison():
-    """Run the comparison workflow adopting the setup in comparison_setup.csv."""
+    """Run complete benchmarking workflow from comparison_setup.csv."""
     luigi.build([Comparison()], local_scheduler=True, workers=64)
 
 

@@ -1,18 +1,17 @@
-from functools import partial
 import heapq
 import itertools
-import torch
 import os
 import subprocess
-from time import time, strftime
 import uuid
+from functools import partial
+from time import strftime, time
+
+import torch
+from rdflib import BNode, Graph, URIRef
+from rdflib.namespace import OWL, RDF, RDFS
+from tqdm import tqdm
 
 from grainsack.kge_lp import complex_cosine_similarity
-
-from rdflib import BNode, Graph, URIRef
-from rdflib.namespace import RDF, RDFS, OWL
-
-from tqdm import tqdm
 
 
 SHM = "/dev/shm"
@@ -300,22 +299,6 @@ def get_justification(kg, addition):
 
 
 def mhs_explain(kg, kge_model, prediction, k=5):
-
-    # kg.parse(dataset / "arco.owl")
-    # kg.parse("family2.owl")
-
-    # observation = (
-    #     URIRef("http://www.semanticweb.org/chrumka/ontologies/2020/4/untitled-ontology-13#jane"),
-    #     RDF.type,
-    #     URIRef("http://www.semanticweb.org/chrumka/ontologies/2020/4/untitled-ontology-13#Mother"),
-    # )
-
-    # observation = (
-    #     URIRef("https://w3id.org/arco/resource/ArchitecturalOrLandscapeHeritage/0100002407"),
-    #     RDF.type,
-    #     URIRef("https://w3id.org/arco/ontology/arco/TangibleCulturalProperty")
-    # )
-
     prediction = (URIRef(prediction[0]), URIRef(prediction[1]), URIRef(prediction[2]))
     print("Getting abducibles...", strftime("%H:%M:%S"))
     abducibles = get_abducibles(kg, prediction, kge_model, k) - {prediction}

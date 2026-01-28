@@ -1,29 +1,42 @@
 """Implementation of the KG class."""
 
-import pandas as pd
 from collections import defaultdict
+from time import strftime
 from typing import Dict
 
 import networkx as nx
-from rdflib import Graph, RDF
+import pandas as pd
 import torch
 from pykeen.datasets import get_dataset
 from pykeen.triples.triples_factory import TriplesFactory
-
-from time import strftime
+from rdflib import RDF, Graph
 
 from . import KGS_PATH
 
 
 class KG:
-    """
-    Class representing a knowledge graph.
+    """Knowledge graph representation with entity/relation mappings and utilities.
+    
+    Loads a knowledge graph from TSV split files, creates ID mappings, parses
+    the RDF representation, extracts entity types, and builds a NetworkX graph
+    for topology-based operations.
+    
+    Attributes:
+        name (str): Name of the knowledge graph.
+        id_to_entity (dict): Mapping from entity IDs to entity URIs.
+        id_to_relation (dict): Mapping from relation IDs to relation URIs.
+        rdf_kg (rdflib.Graph): RDF representation of the knowledge graph.
+        entity_types (pd.DataFrame): Entity type information.
+        nx_graph (networkx.MultiGraph): NetworkX graph for path computations.
     """
 
     def __init__(self, kg: str, create_inverse_triples=False) -> None:
-        """
-        Initialize the KG class.
-        :param kg: The name of the knowledge graph.
+        """Initialize and load a knowledge graph.
+        
+        Args:
+            kg (str): Name of the knowledge graph (directory name in kgs directory).
+            create_inverse_triples (bool, optional): Whether to create inverse
+                triples for the KG (required for ConvE). Defaults to False.
         """
 
         self.name = kg
@@ -63,41 +76,46 @@ class KG:
 
     @property
     def training(self) -> TriplesFactory:
-        """
-        Get the training triples factory.
-        :return: The training triples factory.
+        """Get the training triples factory.
+        
+        Returns:
+            TriplesFactory: PyKEEN triples factory for training data.
         """
         return self._kg.training
 
     @property
     def training_triples(self) -> torch.Tensor:
-        """
-        Get the training triples.
-        :return: The training triples.
+        """Get the training triples as a GPU tensor.
+        
+        Returns:
+            torch.Tensor: Training triples with integer IDs, shape (N, 3), on CUDA.
         """
         return self._kg.training.mapped_triples.cuda()
 
     @property
     def validation(self) -> TriplesFactory:
-        """
-        Get the validation triples factory.
-        :return: The validation triples factory.
+        """Get the validation triples factory.
+        
+        Returns:
+            TriplesFactory: PyKEEN triples factory for validation data.
         """
         return self._kg.validation
 
     @property
     def validation_triples(self) -> torch.Tensor:
-        """
-        Get the validation triples.
-        :return: The validation triples.
+        """Get the validation triples as a GPU tensor.
+        
+        Returns:
+            torch.Tensor: Validation triples with integer IDs, shape (N, 3), on CUDA.
         """
         return self._kg.validation.mapped_triples.cuda()
 
     @property
     def testing(self) -> TriplesFactory:
-        """
-        Get the testing triples factory.
-        :return: The testing triples factory.
+        """Get the testing triples factory.
+        
+        Returns:
+            TriplesFactory: PyKEEN triples factory for test data.
         """
         return self._kg.testing
 
@@ -107,7 +125,7 @@ class KG:
         Get the testing triples.
         :return: The testing triples.
         """
-        return self._kg.testing.mapped_triples
+        return self._kg.testing.mapped_triples.cuda()
 
     @property
     def num_entities(self) -> int:

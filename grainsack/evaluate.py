@@ -1,13 +1,10 @@
 """This module implements the operation `evaluate` and the default prompt templates."""
 
 import torch
-from transformers import pipeline
-
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-
-from grainsack.utils import read_json
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, pipeline
 
 from grainsack import KGS_PATH
+from grainsack.utils import read_json
 
 SYSTEM_PROMPT = """
 You are a helpful, respectful and honest assistant.

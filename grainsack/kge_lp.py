@@ -3,17 +3,16 @@
 import numpy as np
 import torch
 from pykeen.evaluation import RankBasedEvaluator
-from pykeen.sampling import BasicNegativeSampler
-from pykeen.models import Model, TransE, ComplEx, ConvE
+from pykeen.models import ComplEx, ConvE, Model, TransE
 from pykeen.nn import Embedding
-from torch import FloatTensor, LongTensor
-from torch.nn.init import xavier_uniform_, normal_
-from torch.nn import ModuleList
-
-from torch.optim import Adam
-from torch.optim.lr_scheduler import ExponentialLR
+from pykeen.sampling import BasicNegativeSampler
 from pykeen.training import SLCWATrainingLoop
 from pykeen.triples.triples_factory import CoreTriplesFactory
+from torch import FloatTensor, LongTensor
+from torch.nn import ModuleList
+from torch.nn.init import normal_, xavier_uniform_
+from torch.optim import Adam
+from torch.optim.lr_scheduler import ExponentialLR
 
 
 class NoResetEmbedding(torch.nn.Embedding):

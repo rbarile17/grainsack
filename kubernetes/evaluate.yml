@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: evaluate
+spec:
+  ttlSecondsAfterFinished: 604800
+  backoffLimit: 0                     
+  template:
+    spec:
+      runtimeClassName: nvidia
+      containers:
+      - name: evaluate
+        image: rbarile17/grainsack
+        command: ["python", "-u", "-m", "grainsack.operations", "evaluate"]
+        resources:
+          requests:
+            cpu: "0.2"
+            memory: "100Mi"        
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+            nvidia.com/gpu: 2
+        volumeMounts:
+        - name: lustre
+          mountPath: /lustre
+        - name: lustrehome
+          mountPath: /lustrehome
+      restartPolicy: Never
+      volumes:
+      - name: lustre
+        hostPath:
+          path: /lustre
+          type: Directory
+      - name: lustrehome
+        hostPath:
+          path: /lustrehome
+          type: Directory
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-A100-PCIE-40GB

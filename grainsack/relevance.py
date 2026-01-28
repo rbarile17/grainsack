@@ -3,10 +3,7 @@
 import torch
 
 from grainsack import CONVE
-
-from grainsack.kge_lp import MODEL_REGISTRY
-
-from grainsack.kge_lp import rank, train_kge_model
+from grainsack.kge_lp import MODEL_REGISTRY, rank, train_kge_model
 
 
 def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, original_statements, partition, operation=None):
@@ -91,12 +88,21 @@ def estimate_rank_variation(kg, kge_model, kge_config, prediction, statements, o
 
 
 def dp_relevance(model, lr, prediction, statements, lambd=1):
-    """Measure for each statement the relevance wrt the prediction based on embedding perturbation
-
-    Let <s, p, o> be the prediction, compute the perturbed entity embedding s_
-    by shifting s based on the gradient and measure the relevance of a statement (s, q, e)
-    as the difference between the score of (s, q, e) and the score of (s_, q, e).
-
+    """Compute statement relevance using data poisoning via embedding perturbation.
+    
+    For prediction <s, p, o>, computes perturbed entity embedding s' by shifting s
+    based on the gradient. Relevance of statement (s, q, e) is measured as the
+    difference between scores of (s, q, e) and (s', q, e).
+    
+    Args:
+        model: KGE model with entity and relation embeddings.
+        lr (float): Learning rate for perturbation step size.
+        prediction (torch.Tensor): Prediction triple (subject, predicate, object).
+        statements (torch.Tensor): Candidate statement triples to score.
+        lambd (float, optional): Weighting factor for perturbed scores. Defaults to 1.
+        
+    Returns:
+        torch.Tensor: Relevance scores for each statement.
     """
 
     n_statements = statements.size(0)
@@ -142,7 +148,20 @@ def dp_relevance(model, lr, prediction, statements, lambd=1):
 
 
 def criage_relevance(kg, model, prediction, statements):
-    """Measure the relevance of each statement based on influence functions."""
+    """Compute statement relevance using influence functions (CRIAGE method).
+    
+    Estimates the influence of adding each statement on the prediction score
+    using Hessian-based influence functions from the CRIAGE explanation method.
+    
+    Args:
+        kg (KG): Knowledge graph.
+        model: KGE model with entity and relation embeddings.
+        prediction (torch.Tensor): Prediction triple to explain.
+        statements (torch.Tensor): Candidate statement triples to score.
+        
+    Returns:
+        torch.Tensor: Influence scores for each statement.
+    """
 
     def get_hessian(model, entity, triples, lam=1e-4):
         lhs = model.entity_representations[0](triples[:, 0]).detach()
