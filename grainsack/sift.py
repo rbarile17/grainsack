@@ -121,7 +121,6 @@ def hypothesis(kg, summary, partition, prediction):
         torch.Tensor: Generated hypothesis triples on GPU, excluding existing triples.
     """
     e = prediction[0]
-    partition = [p for p in partition]
 
     qe = next(i for i, t in enumerate(partition) if (t == e).any())
 
@@ -130,37 +129,39 @@ def hypothesis(kg, summary, partition, prediction):
 
     blocks = []
 
-    # Build blocks for subject position
-    for _, p, qo in rows_sub.tolist():
-        o = partition[qo]
-        n = o.numel()
-        if n == 0:
-            continue
-        block = torch.empty((n, 3), dtype=prediction.dtype).cpu()
-        block[:, 0] = e
-        block[:, 1] = p
-        block[:, 2] = o
-        blocks.append(block)
+    if len(rows_sub) > 0:
+        for i in range(len(rows_sub)):
+            p = rows_sub[i, 1]
+            qo = rows_sub[i, 2].item()
+            o = partition[qo]
+            n = o.numel()
+            if n == 0:
+                continue
+            block = torch.empty((n, 3), dtype=prediction.dtype, device=DEVICE)
+            block[:, 0] = e
+            block[:, 1] = p
+            block[:, 2] = o
+            blocks.append(block)
 
-    # Build blocks for object position
-    for qs, p, _ in rows_obj.tolist():
-        s = partition[qs]
-        n = s.numel()
-        if n == 0:
-            continue
-        block = torch.empty((n, 3), dtype=prediction.dtype).cpu()
-        block[:, 0] = s
-        block[:, 1] = p
-        block[:, 2] = e
-        blocks.append(block)
+    if len(rows_obj) > 0:
+        for i in range(len(rows_obj)):
+            qs = rows_obj[i, 0].item()
+            p = rows_obj[i, 1]
+            s = partition[qs]
+            n = s.numel()
+            if n == 0:
+                continue
+            block = torch.empty((n, 3), dtype=prediction.dtype, device=DEVICE)
+            block[:, 0] = s
+            block[:, 1] = p
+            block[:, 2] = e
+            blocks.append(block)
 
     triples = torch.cat(blocks, dim=0)
 
-    # Filter out the prediction itself
     triples = triples[(triples != prediction).any(dim=1)]
 
-    # Filter out existing training triples
-    train = kg.training_triples.to(triples.device)
+    train = kg.training_triples
     max_p = max(triples[:, 1].max(), train[:, 1].max()).item()
     max_o = max(triples[:, 2].max(), train[:, 2].max()).item()
 
@@ -170,4 +171,4 @@ def hypothesis(kg, summary, partition, prediction):
     mask_in_train = torch.isin(packed_triples, packed_train)
     triples = triples[~mask_in_train].to(triples.dtype)
 
-    return triples.to(DEVICE)
+    return triples

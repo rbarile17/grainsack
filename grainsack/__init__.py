@@ -16,8 +16,6 @@ logger = logging.getLogger('grainsack')
 
 MAX_PROCESSES = 8
 
-# Device management: support both CPU and GPU execution
-# Set GRAINSACK_DEVICE environment variable to 'cpu' to force CPU mode
 _device_env = os.environ.get('GRAINSACK_DEVICE', 'auto').lower()
 if _device_env == 'cpu':
     DEVICE = torch.device('cpu')
