@@ -105,6 +105,8 @@ def run_kubernetes(script, params_dict):
     for key, value in params_dict.items():
         if key == "log_path":
             log_path = str(value)
+        elif key == "lpx_config":
+            cmd_args.extend([f"--{key}", json.dumps(value)])
         else:
             cmd_args.extend([f"--{key}", str(value)])
 
@@ -117,49 +119,49 @@ def run_kubernetes(script, params_dict):
 
     container["command"] = ["/bin/bash", "-c", python_cmd]
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+    with open(f"instantiated_workflows/{job_name}.yml", "w") as f:
         yaml.dump(job_spec, f)
-        temp_file = f.name
+        # temp_file = f.name
 
-    try:
-        create_cmd = ["kubectl", "create", "-f", temp_file]
-        subprocess.run(create_cmd, check=True)
+    # try:
+    #     create_cmd = ["kubectl", "create", "-f", temp_file]
+    #     subprocess.run(create_cmd, check=True)
 
-        while True:
-            status_cmd = ["kubectl", "get", "job", job_name, "-o",
-                          "jsonpath={.status.conditions[?(@.type=='Complete')].status}"]
-            try:
-                complete_status = subprocess.check_output(
-                    status_cmd, stderr=subprocess.DEVNULL).decode("utf-8").strip()
-            except subprocess.CalledProcessError:
-                complete_status = ""
+    #     while True:
+    #         status_cmd = ["kubectl", "get", "job", job_name, "-o",
+    #                       "jsonpath={.status.conditions[?(@.type=='Complete')].status}"]
+    #         try:
+    #             complete_status = subprocess.check_output(
+    #                 status_cmd, stderr=subprocess.DEVNULL).decode("utf-8").strip()
+    #         except subprocess.CalledProcessError:
+    #             complete_status = ""
 
-            status_cmd_failed = [
-                "kubectl",
-                "get",
-                "job",
-                job_name,
-                "-o",
-                "jsonpath={.status.conditions[?(@.type=='Failed')].status}",
-            ]
-            try:
-                failed_status = subprocess.check_output(
-                    status_cmd_failed, stderr=subprocess.DEVNULL).decode("utf-8").strip()
-            except subprocess.CalledProcessError:
-                failed_status = ""
+    #         status_cmd_failed = [
+    #             "kubectl",
+    #             "get",
+    #             "job",
+    #             job_name,
+    #             "-o",
+    #             "jsonpath={.status.conditions[?(@.type=='Failed')].status}",
+    #         ]
+    #         try:
+    #             failed_status = subprocess.check_output(
+    #                 status_cmd_failed, stderr=subprocess.DEVNULL).decode("utf-8").strip()
+    #         except subprocess.CalledProcessError:
+    #             failed_status = ""
 
-            logger.info(
-                f"Job {job_name} status - Complete: {complete_status}, Failed: {failed_status}")
+    #         logger.info(
+    #             f"Job {job_name} status - Complete: {complete_status}, Failed: {failed_status}")
 
-            if complete_status == "True":
-                break
-            if failed_status == "True":
-                raise RuntimeError(f"Kubernetes job {job_name} failed")
+    #         if complete_status == "True":
+    #             break
+    #         if failed_status == "True":
+    #             raise RuntimeError(f"Kubernetes job {job_name} failed")
 
-            time.sleep(10)
-    finally:
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
+    #         time.sleep(10)
+    # finally:
+    #     if os.path.exists(temp_file):
+    #         os.remove(temp_file)
 
 
 class BaseTask(luigi.Task):
@@ -238,7 +240,8 @@ class Tune(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.job_name = f"tune_{self.kg_name}_{self.kge_model_name}"
-        self.output_path = LP_CONFIGS_PATH / f"{self.job_name.removeprefix('tune_')}.json"
+        self.output_path = LP_CONFIGS_PATH / \
+            f"{self.job_name.removeprefix('tune_')}.json"
         self.log_path = LOGS_PATH / f"{self.job_name}.log"
 
     def requires(self):
@@ -269,8 +272,10 @@ class Train(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.job_name = f"train_{self.kg_name}_{self.kge_model_name}"
-        self.kge_config_path = LP_CONFIGS_PATH / f"{self.job_name.removeprefix('train_')}.json"
-        self.output_path = KGES_PATH / f"{self.job_name.removeprefix('train_')}.pt"
+        self.kge_config_path = LP_CONFIGS_PATH / \
+            f"{self.job_name.removeprefix('train_')}.json"
+        self.output_path = KGES_PATH / \
+            f"{self.job_name.removeprefix('train_')}.pt"
         self.log_path = LOGS_PATH / f"{self.job_name}.log"
 
     def requires(self):
@@ -301,9 +306,12 @@ class Rank(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.job_name = f"rank_{self.kg_name}_{self.kge_model_name}"
-        self.kge_model_path = KGES_PATH / f"{self.job_name.removeprefix('rank_')}.pt"
-        self.kge_config_path = LP_CONFIGS_PATH / f"{self.job_name.removeprefix('rank_')}.json"
-        self.output_path = PREDICTIONS_PATH / f"{self.job_name.removeprefix('rank_')}.csv"
+        self.kge_model_path = KGES_PATH / \
+            f"{self.job_name.removeprefix('rank_')}.pt"
+        self.kge_config_path = LP_CONFIGS_PATH / \
+            f"{self.job_name.removeprefix('rank_')}.json"
+        self.output_path = PREDICTIONS_PATH / \
+            f"{self.job_name.removeprefix('rank_')}.csv"
         self.log_path = LOGS_PATH / f"{self.job_name}.log"
 
     def requires(self):
@@ -370,11 +378,18 @@ class Explain(BaseTask):
         super().__init__(*args, **kwargs)
         lpx_config = json.loads(self.lpx_config)
         self.job_name = f"explain_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}"
-        self.predictions_path = SELECTED_PREDICTIONS_PATH / f"{self.kg_name}_{self.kge_model_name}.csv"
-        self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
-        self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
-        self.output_path = EXPLANATIONS_PATH / f"{self.job_name.removeprefix('explain_')}.json"
-        self.log_path = LOGS_PATH / f"{self.job_name}.log"
+        self.predictions_path = "/lustrehome/robertobarile/grainsack/" / SELECTED_PREDICTIONS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.csv"
+        self.kge_model_path = "/lustrehome/robertobarile/grainsack/" / KGES_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.pt"
+        self.kge_config_path = "/lustrehome/robertobarile/grainsack/" / LP_CONFIGS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.json"
+        self.output_path = "/lustrehome/robertobarile/grainsack/" / EXPLANATIONS_PATH / \
+            f"{self.job_name.removeprefix('explain_')}.json"
+        self.log_path = "/lustrehome/robertobarile/grainsack/" / \
+            LOGS_PATH / f"{self.job_name}.log"
+
+        self.job_name = f"explain-{self.kg_name.split('-')[0].lower()}-{self.kge_model_name.lower()}-{lpx_config['method'].lower()}-{lpx_config['summarization'].lower() if lpx_config['summarization'] is not None else 'none'}"
 
     def requires(self):
         """Declare dependencies."""
@@ -423,10 +438,14 @@ class Evaluate(BaseTask):
         super().__init__(*args, **kwargs)
         lpx_config = json.loads(self.lpx_config)
         self.job_name = f"evaluate_{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}"
-        self.kge_model_path = KGES_PATH / f"{self.kg_name}_{self.kge_model_name}.pt"
-        self.kge_config_path = LP_CONFIGS_PATH / f"{self.kg_name}_{self.kge_model_name}.json"
-        self.explanations_path = EXPLANATIONS_PATH / f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
-        self.output_path = EVALUATIONS_PATH / f"{self.job_name.removeprefix('evaluate_')}.json"
+        self.kge_model_path = KGES_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.pt"
+        self.kge_config_path = LP_CONFIGS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}.json"
+        self.explanations_path = EXPLANATIONS_PATH / \
+            f"{self.kg_name}_{self.kge_model_name}_{lpx_config['method']}_{lpx_config['summarization']}.json"
+        self.output_path = EVALUATIONS_PATH / \
+            f"{self.job_name.removeprefix('evaluate_')}.json"
         self.log_path = LOGS_PATH / f"{self.job_name}.log"
 
     def requires(self):

@@ -3,7 +3,7 @@ kind: Job
 metadata:
   name: evaluate
 spec:
-  ttlSecondsAfterFinished: 604800
+  ttlSecondsAfterFinished: 172800
   backoffLimit: 0                     
   template:
     spec:
@@ -11,14 +11,22 @@ spec:
       containers:
       - name: evaluate
         image: rbarile17/grainsack
+        env:
+          - name: PYSTOW_HOME
+            value: /lustrehome/robertobarile
+          - name: TORCHINDUCTOR_CACHE_DIR
+            value: /tmp/torchinductor
+          - name: TORCHDYNAMO_CACHE_DIR
+            value: /tmp/torchdynamo
         command: ["python", "-u", "-m", "grainsack.operations", "evaluate"]
         resources:
           requests:
-            cpu: "0.2"
-            memory: "100Mi"        
+            cpu: "8"
+            memory: "64Gi"
+            nvidia.com/gpu: 1
           limits:
-            cpu: "2"
-            memory: "4Gi"
+            cpu: "8"
+            memory: "64Gi"
             nvidia.com/gpu: 2
         volumeMounts:
         - name: lustre

@@ -77,6 +77,8 @@ def build_combinatorial_optimization_explainer(kg, kge_model, kge_config, lpx_co
         ValueError: If the specified method is not supported.
     """
 
+    logger.info("Building combinatorial optimization explainer")
+
     method = lpx_config["method"]
     summarization = lpx_config["summarization"]
 
@@ -180,8 +182,9 @@ def run_combinatorial_optimization(
         prediction = torch.tensor(prediction).to(DEVICE)
 
         logger.info("Getting statements")
-
         original_statements = get_statements(prediction)
+
+        logger.info("Sifting statements")
         original_statements = sift(prediction, original_statements)
 
         logger.info("Summarizing statements")

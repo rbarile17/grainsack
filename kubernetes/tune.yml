@@ -3,7 +3,7 @@ kind: Job
 metadata:
   name: test
 spec:
-  ttlSecondsAfterFinished: 604800
+  ttlSecondsAfterFinished: 172800
   backoffLimit: 0                     
   template:
     spec:
@@ -21,11 +21,12 @@ spec:
         command: ["python", "-u", "-m", "grainsack.operations", "tune"]
         resources:
           requests:
-            cpu: "0.2"
-            memory: "100Mi"        
+            cpu: "8"
+            memory: "64Gi"
+            nvidia.com/gpu: 1
           limits:
-            cpu: "2"
-            memory: "4Gi"
+            cpu: "8"
+            memory: "64Gi"
             nvidia.com/gpu: 1
         volumeMounts:
         - name: lustre

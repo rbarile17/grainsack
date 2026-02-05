@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: explain
+  name: convert-kg
 spec:
   ttlSecondsAfterFinished: 172800
   backoffLimit: 0                     
@@ -9,7 +9,7 @@ spec:
     spec:
       runtimeClassName: nvidia
       containers:
-      - name: explain
+      - name: convert-kg
         image: rbarile17/grainsack
         env:
           - name: PYSTOW_HOME
@@ -18,10 +18,10 @@ spec:
             value: /tmp/torchinductor
           - name: TORCHDYNAMO_CACHE_DIR
             value: /tmp/torchdynamo
-        command: ["python", "-u", "-m", "grainsack.operations", "explain"]
+        command: ["python", "-u", "-m", "datapreprocessing.convert_owl_to_pickle"]
         resources:
           requests:
-            cpu: "8"
+            cpu: "4"
             memory: "64Gi"
             nvidia.com/gpu: 1
           limits:

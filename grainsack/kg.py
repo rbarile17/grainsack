@@ -40,6 +40,23 @@ class KG:
 
         self.name = kg
 
+        # Check if complete KG pickle exists
+        kg_pickle_path = KGS_PATH / self.name / "kg_complete.pkl"
+
+        if kg_pickle_path.exists():
+            logger.info(f"Loading complete KG from pickle: {kg_pickle_path}")
+            import pickle
+            with open(kg_pickle_path, 'rb') as f:
+                cached_kg = pickle.load(f)
+
+            # Copy all attributes from cached KG
+            self.__dict__.update(cached_kg.__dict__)
+            logger.info("KG loaded from pickle successfully")
+            return
+
+        # Original loading code (build from scratch)
+        logger.info("Building KG from scratch (no pickle found)")
+
         train = KGS_PATH / self.name / "abox/splits/train.tsv"
         test = KGS_PATH / self.name / "abox/splits/test.tsv"
         valid = KGS_PATH / self.name / "abox/splits/valid.tsv"
@@ -72,6 +89,8 @@ class KG:
         )
         self.entity_types["entity"] = self.entity_types["entity"].map(
             self.entity_to_id.get)
+
+        logger.info("Building NetworkX graph")
 
         self.nx_graph = nx.MultiGraph()
         self.nx_graph.add_nodes_from(list(self.id_to_entity.keys()))

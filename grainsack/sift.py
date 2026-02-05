@@ -2,6 +2,7 @@
 
 import networkx as nx
 import torch
+from joblib import Parallel, delayed
 
 from grainsack import DEVICE
 
@@ -27,31 +28,7 @@ def criage_sift(kg: KG, prediction, k: int = 20):
     return kg.training_triples[mask][:k]
 
 
-def fitness(nx_kg, prediction, triple):
-    """Compute the fitness score of a triple based on shortest path distance.
-
-    For a prediction <s, p, o> and triple <s, q, e> (or <e, q, s>), fitness is
-    defined as the length of the shortest path between entity e and the
-    prediction's object o. Lower values indicate higher fitness.
-
-    Args:
-        nx_kg (networkx.MultiGraph): Knowledge graph as a NetworkX graph.
-        prediction (torch.Tensor): Prediction triple (subject, predicate, object).
-        triple (torch.Tensor): Triple to compute fitness for.
-
-    Returns:
-        float: Shortest path length, or 1e6 if no path exists.
-    """
-    entity = triple[2] if triple[0] == prediction[0] else triple[0]
-    entity = entity.item()
-
-    try:
-        return nx.shortest_path_length(nx_kg, entity, prediction[2].item())
-    except nx.NetworkXNoPath:
-        return 1e6
-
-
-def topology_sift(kg, prediction, triples, k: int = 10):
+def topology_sift(kg, prediction, triples, k: int = 10, n_jobs: int = -1):
     """Select top-k triples with highest fitness based on graph topology.
 
     Filters triples featuring the prediction's subject, ranking them by shortest
@@ -62,11 +39,36 @@ def topology_sift(kg, prediction, triples, k: int = 10):
         prediction (torch.Tensor): Prediction triple (subject, predicate, object).
         triples (torch.Tensor): Candidate triples to filter.
         k (int, optional): Maximum number of triples to return. Defaults to 10.
+        n_jobs (int, optional): Number of parallel jobs. -1 uses all cores. Defaults to -1.
 
     Returns:
         torch.Tensor: Top-k triples sorted by fitness, shape (k, 3).
     """
-    return torch.vstack(sorted(triples, key=lambda x: fitness(kg.nx_graph, prediction, x))[:k])
+
+    def _compute_single_path(nx_graph, entity, target):
+        try:
+            return nx.shortest_path_length(nx_graph, entity, target)
+        except nx.NetworkXNoPath:
+            return 1e6
+
+    if len(triples) == 0:
+        return triples
+
+    nx_graph = kg.nx_graph
+    pred_subj = prediction[0].item()
+    target = prediction[2].item()
+
+    entities = [triple[2].item() if triple[0].item() == pred_subj else triple[0].item() for triple in triples]
+
+    fitness_scores = Parallel(n_jobs=n_jobs, backend='threading')(
+        delayed(_compute_single_path)(nx_graph, entity, target) for entity in entities
+    )
+
+    sorted_indices = sorted(range(len(fitness_scores)),
+                            key=lambda i: fitness_scores[i])[:k]
+    result = torch.vstack([triples[i] for i in sorted_indices])
+
+    return result
 
 
 def get_statements(kg, prediction):
